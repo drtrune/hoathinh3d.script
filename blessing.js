@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         HoatHinh3D Chúc phúc & Lì Xì Tự Động (Logic Lì Xì Sau Chúc Phúc)
+// @name         HoatHinh3D Tiên duyên
 // @namespace    http://tampermonkey.net/
-// @version      2.6
-// @description  Mỗi 2 giây, script sẽ kiểm tra trang để tìm khung nhập lời chúc hoặc modal lì xì. Nếu đã chúc phúc, sẽ tập trung tìm lì xì (5 lần). Tự động dừng script khi phát hiện đã nhận thưởng. KHÔNG TỰ ĐỘNG ĐÓNG LÌ XÌ.
+// @version      2.8
+// @description  Tự động chúc phúc và nhận lì xì
 // @author       Bạn
 // @match        https://hoathinh3d.gg/phong-cuoi*
 // @grant        none
@@ -17,6 +17,8 @@
     const WEDDING_BLESSING_MESSAGE = "Chúc mừng hạnh phúc hai bạn! Chúc hai bạn mãi mãi bên nhau và có một cuộc sống tràn ngập niềm vui và tiếng cười!";
     const ALREADY_BLESSED_MESSAGE = "Đạo hữu đã gửi lời chúc phúc cho cặp đôi này! 🌸";
     const REWARD_RECEIVED_MESSAGE = "Chúc mừng đạo hữu đã nhận được phần thưởng!";
+    // Dòng chữ để xác định modal lì xì
+    const LIXI_MODAL_TEXT = "Đạo hữu là vị khách may mắn nhận được lì xì từ chủ tiệc cưới. Hãy mở để xem điều bất ngờ!";
 
     // Thời gian kiểm tra lặp lại chính của vòng lặp tổng thể
     const MAIN_CHECK_INTERVAL = 2000; // Mỗi 2 giây
@@ -100,32 +102,45 @@
     async function handleLixiWithRetries() {
         if (isLixiProcessActive) {
             console.log('[Auto Blessing] handleLixiWithRetries: Tiến trình xử lý lì xì đã hoặc đang chạy. Bỏ qua.');
-            return false; // Tránh chạy lại
+            return false;
         }
         isLixiProcessActive = true;
         console.log(`[Auto Blessing] handleLixiWithRetries: Bắt đầu xử lý lì xì (thử ${LIXI_CHECK_RETRIES} lần, mỗi ${LIXI_CHECK_INTERVAL/1000}s).`);
 
         let lixiFoundAndOpened = false;
         for (let i = 0; i < LIXI_CHECK_RETRIES; i++) {
-            const lixiModal = document.querySelector('#liXiModal.active');
-            if (lixiModal && lixiModal.offsetParent !== null) {
-                console.log(`[Auto Blessing] handleLixiWithRetries: Đã tìm thấy modal lì xì (lần ${i+1}/${LIXI_CHECK_RETRIES})!`);
-                const openButton = await waitForElementSimple('#openButton', INTER_ACTION_DELAY * 2, 200, 'nút "Mở Lì Xì"'); // Chờ nút mở 2s
+            // Tìm kiếm phần tử <p> chứa dòng chữ xác nhận lì xì
+            const lixiMessageP = document.evaluate(
+                `//p[contains(text(), "${LIXI_MODAL_TEXT}")]`,
+                document,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                null
+            ).singleNodeValue;
+
+            if (lixiMessageP && lixiMessageP.offsetParent !== null) {
+                // Nếu tìm thấy dòng chữ, thử tìm nút mở lì xì
+                console.log(`[Auto Blessing] handleLixiWithRetries: Đã tìm thấy dòng chữ lì xì (lần ${i+1}/${LIXI_CHECK_RETRIES})!`);
+                
+                const openButton = await waitForElementSimple('#openButton', INTER_ACTION_DELAY * 2, 200, 'nút "Mở Lì Xì"');
+                
                 if (openButton) {
                     console.log('[Auto Blessing] handleLixiWithRetries: Đã tìm thấy nút "Mở Lì Xì". Đang nhấp...');
                     if (safeClick(openButton, 'nút "Mở Lì Xì"')) {
-                        console.log('[Auto Blessing] handleLixiWithRetries: ĐÃ NHẤP NÚT "Mở Lì Xì" THÀNH CÔNG! Sẽ không tự động đóng lì xì.');
+                        console.log('%c[Auto Blessing] handleLixiWithRetries: ĐÃ NHẤP NÚT "Mở Lì Xì" THÀNH CÔNG! Sẽ dừng script.', 'color: purple; font-weight: bold;');
                         await sleep(INTER_ACTION_DELAY); // Đợi 1 giây sau khi mở
                         lixiFoundAndOpened = true;
+                        // Dừng script ngay sau khi lì xì được mở
+                        stopAutoBlessing();
                         break; // Đã mở lì xì, dừng vòng lặp thử
                     } else {
-                        console.warn('[Auto Blessing] handleLixiWithRetries: Không thể nhấp nút "Mở Lì Xì". Thử lại.');
+                        console.warn('[Auto Blessing] handleLixiWithRetries: Không thể nhấp nút "Mở Lì Xì". Có thể nút bị disabled hoặc không hiển thị. Thử lại.');
                     }
                 } else {
-                    console.warn('[Auto Blessing] handleLixiWithRetries: KHÔNG tìm thấy nút "Mở Lì Xì" trong modal. Thử lại.');
+                    console.warn('[Auto Blessing] handleLixiWithRetries: KHÔNG tìm thấy nút "Mở Lì Xì" liên quan đến dòng chữ lì xì. Thử lại.');
                 }
             } else {
-                console.log(`[Auto Blessing] handleLixiWithRetries: Lần thử ${i+1}/${LIXI_CHECK_RETRIES}: Modal lì xì chưa sẵn sàng.`);
+                console.log(`[Auto Blessing] handleLixiWithRetries: Lần thử ${i+1}/${LIXI_CHECK_RETRIES}: Dòng chữ lì xì chưa sẵn sàng.`);
             }
             if (!lixiFoundAndOpened && i < LIXI_CHECK_RETRIES - 1) { // Chỉ đợi nếu chưa mở được và vẫn còn lần thử
                 await sleep(LIXI_CHECK_INTERVAL);
@@ -140,12 +155,12 @@
     async function performBlessing() {
         if (isBlessingProcessActive) {
             console.log('[Auto Blessing] performBlessing: Tiến trình chúc phúc đã hoặc đang chạy. Bỏ qua.');
-            return false; // Tránh chạy lại
+            return false;
         }
         isBlessingProcessActive = true;
         console.log('[Auto Blessing] performBlessing: Bắt đầu quá trình chúc phúc.');
 
-        const textarea = await waitForElementSimple('textarea.blessing-input#blessing-message', INTER_ACTION_DELAY * 3, 200, 'textarea lời chúc'); // Chờ 3s
+        const textarea = await waitForElementSimple('textarea.blessing-input#blessing-message', INTER_ACTION_DELAY * 3, 200, 'textarea lời chúc');
         if (!textarea) {
             console.warn('[Auto Blessing] performBlessing: KHÔNG tìm thấy textarea lời chúc sau khi chờ. Dừng quá trình chúc phúc.');
             isBlessingProcessActive = false;
@@ -159,7 +174,7 @@
 
         await sleep(INTER_ACTION_DELAY);
 
-        const sendButton = await waitForElementSimple('button.blessing-button', INTER_ACTION_DELAY * 3, 200, 'nút "Gửi Chúc Phúc"'); // Chờ 3s
+        const sendButton = await waitForElementSimple('button.blessing-button', INTER_ACTION_DELAY * 3, 200, 'nút "Gửi Chúc Phúc"');
         if (!sendButton) {
             console.warn('[Auto Blessing] performBlessing: KHÔNG tìm thấy nút "Gửi Chúc Phúc" sau khi chờ. Dừng quá trình.');
             isBlessingProcessActive = false;
@@ -175,7 +190,7 @@
 
         await sleep(INTER_ACTION_DELAY);
 
-        const confirmButton = await waitForElementSimple('button.custom-modal-button.confirm', INTER_ACTION_DELAY * 3, 200, 'nút "Xác Nhận"'); // Chờ 3s
+        const confirmButton = await waitForElementSimple('button.custom-modal-button.confirm', INTER_ACTION_DELAY * 3, 200, 'nút "Xác Nhận"');
         if (!confirmButton) {
             console.warn('[Auto Blessing] performBlessing: KHÔNG tìm thấy nút "Xác Nhận" sau khi chờ. Dừng quá trình.');
             isBlessingProcessActive = false;
@@ -202,7 +217,7 @@
         if (intervalId !== null) {
             clearInterval(intervalId);
             intervalId = null;
-            console.log('%c[Auto Blessing] SCRIPT ĐÃ DỪNG: Đã hoàn thành nhiệm vụ hoặc được dừng thủ công.', 'color: #1a73e8; font-weight: bold;');
+            console.log('%c[Auto Blessing] SCRIPT ĐÃ DỪNG: Nhiệm vụ hoàn thành hoặc được dừng thủ công.', 'color: #1a73e8; font-weight: bold;');
         } else {
             console.log('[Auto Blessing] Script không hoạt động (intervalId là null).');
         }
@@ -210,20 +225,20 @@
 
     // --- Hàm kiểm tra chính lặp lại ---
     async function mainLoopCheck() {
-        if (isScriptStopping) { // Kiểm tra cờ dừng ngay từ đầu vòng lặp
+        if (isScriptStopping) {
             return;
         }
         console.log(`[Auto Blessing] Main loop check: ${new Date().toLocaleTimeString()} - BlessingActive: ${isBlessingProcessActive}, LixiActive: ${isLixiProcessActive}, LixiAttempted: ${hasAttemptedLixiAfterBlessing}`);
 
-        const blessingMessageDiv = document.querySelector('.blessing-message p'); // Giả định là nơi chứa cả lời chúc và thông báo nhận thưởng
+        const blessingMessageDiv = document.querySelector('.blessing-message p');
 
         // **KIỂM TRA ĐIỀU KIỆN DỪNG SCRIPT ĐẦU TIÊN (Đã nhận thưởng)**
         if (blessingMessageDiv && blessingMessageDiv.textContent.includes(REWARD_RECEIVED_MESSAGE)) {
             console.log(`%c[Auto Blessing] ĐÃ PHÁT HIỆN DÒNG CHỮ: "${REWARD_RECEIVED_MESSAGE}". Dừng script.`, 'color: green; font-weight: bold;');
             stopAutoBlessing();
-            return; // Dừng ngay lập tức
+            return;
         }
-
+        
         // --- Xác định trạng thái đã chúc phúc ---
         let alreadyBlessed = false;
         if (blessingMessageDiv && blessingMessageDiv.textContent.includes(ALREADY_BLESSED_MESSAGE)) {
@@ -234,23 +249,18 @@
         }
 
         // --- Logic chính ---
-        // 1. Nếu đã chúc phúc hoặc quá trình chúc phúc đang diễn ra, TẬP TRUNG TÌM LÌ XÌ
+        // 1. Nếu đã chúc phúc, TẬP TRUNG TÌM LÌ XÌ
         if (alreadyBlessed) {
-            // Chỉ cố gắng tìm lì xì 5 lần sau khi đã chúc phúc
             if (!hasAttemptedLixiAfterBlessing) {
                 console.log('[Auto Blessing] Đã chúc phúc. Bắt đầu tìm lì xì (tối đa 5 lần).');
-                // Gọi hàm handleLixiWithRetries, và đánh dấu là đã cố gắng
                 const lixiOpened = await handleLixiWithRetries();
-                hasAttemptedLixiAfterBlessing = true; // Đánh dấu đã cố gắng tìm lì xì sau chúc phúc
-                if (lixiOpened) {
-                    console.log('[Auto Blessing] Lì xì đã được mở thành công sau chúc phúc. Vẫn tiếp tục vòng lặp để kiểm tra các trường hợp khác (ví dụ: nhận thưởng) hoặc dừng thủ công.');
-                    // Nếu bạn muốn dừng script hoàn toàn sau khi lì xì đã được mở, hãy gọi stopAutoBlessing() ở đây
-                    // stopAutoBlessing();
-                } else {
-                    console.log('[Auto Blessing] Đã thử tìm lì xì 5 lần sau chúc phúc nhưng không mở được. Sẽ không thử lại lì xì nữa trong tương lai (trừ khi trang được tải lại).');
+                hasAttemptedLixiAfterBlessing = true; // Đánh dấu đã cố gắng tìm lì xì
+                if (!lixiOpened) { // Nếu đã cố gắng 5 lần mà không mở được lì xì
+                    console.log('%c[Auto Blessing] Đã thử tìm lì xì 5 lần sau chúc phúc nhưng không mở được. Dừng script.', 'color: red; font-weight: bold;');
+                    stopAutoBlessing(); // Dừng script vì không mở được lì xì
                 }
             } else {
-                console.log('[Auto Blessing] Đã chúc phúc và đã cố gắng tìm lì xì. Chờ đợi nếu có thông báo nhận thưởng.');
+                console.log('[Auto Blessing] Đã chúc phúc và đã cố gắng tìm lì xì. Chờ đợi nếu có thông báo nhận thưởng hoặc dừng thủ công.');
             }
         }
         // 2. Nếu chưa chúc phúc VÀ không có quá trình chúc phúc/lì xì nào đang chạy, thì tiến hành chúc phúc
@@ -261,7 +271,6 @@
                 const blessingSuccess = await performBlessing();
                 if (blessingSuccess) {
                     console.log('[Auto Blessing] Chúc phúc thành công! Bây giờ sẽ tìm lì xì.');
-                    // Sau khi chúc phúc thành công, chuyển sang trạng thái đã chúc phúc và tìm lì xì
                     hasAttemptedLixiAfterBlessing = false; // Reset cờ để tìm lì xì 5 lần sau khi chúc phúc xong
                     // Vòng lặp tiếp theo sẽ tự động vào nhánh alreadyBlessed và tìm lì xì
                 } else {
@@ -277,9 +286,7 @@
     function startMainLoop() {
         if (intervalId === null) {
             console.log('[Auto Blessing] Khởi động vòng lặp kiểm tra chính.');
-            // Chạy lần kiểm tra đầu tiên ngay lập tức
             mainLoopCheck();
-            // Sau đó thiết lập setInterval để lặp lại mỗi 2 giây
             intervalId = setInterval(mainLoopCheck, MAIN_CHECK_INTERVAL);
         } else {
             console.log('[Auto Blessing] Vòng lặp kiểm tra chính đã chạy rồi.');
@@ -287,10 +294,8 @@
     }
 
     // --- Đảm bảo script khởi động một cách mạnh mẽ ---
-    // Gọi startMainLoop() ngay lập tức để không bỏ lỡ bất kỳ thời điểm nào.
     startMainLoop();
 
-    // Thêm lắng nghe sự kiện DOMContentLoaded và load để dự phòng
     window.addEventListener('DOMContentLoaded', () => {
         console.log('[Auto Blessing] DOMContentLoaded đã kích hoạt. Kiểm tra lại khởi động vòng lặp.');
         startMainLoop();

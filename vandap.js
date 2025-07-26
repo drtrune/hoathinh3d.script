@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Vấn đáp
 // @namespace    http://tampermonkey.net/
-// @version      1.8
+// @version      1.9
 // @description  Tự động giải Vấn Đáp Tổng Môn trên Hoathinh3d
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/van-dap-tong-mon*
@@ -79,8 +79,8 @@
             overlay.id = 'hh3d-answer-overlay';
             Object.assign(overlay.style, {
                 position: 'fixed',
-                top: '10px',
-                right: '10px',
+                top: '110px',
+                left: '10px',
                 backgroundColor: 'rgba(0, 0, 0, 0.7)',
                 color: 'white',
                 padding: '15px',

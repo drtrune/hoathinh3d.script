@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         hh3d-Tự-giải-vấn-đáp-Full-Logging
+// @name         HH3D Vấn đáp
 // @namespace    http://tampermonkey.net/
-// @version      1.0.4
-// @description  Tự động giải Vấn Đáp Tổng Môn trên Hoathinh3d.gg với tính năng logging đầy đủ để debug.
-// @author       ChatGPT & You
+// @version      1.8
+// @description  Tự động giải Vấn Đáp Tổng Môn trên Hoathinh3d
+// @author       Dr. Trune
 // @match        https://hoathinh3d.gg/van-dap-tong-mon*
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
@@ -24,19 +24,24 @@
     // --- Cấu hình ---
     const QUESTION_DATA_URL = 'https://raw.githubusercontent.com/drtrune/hoathinh3d.script/main/vandap.json';
     const CACHE_DURATION = 3600 * 1000; // 1 giờ (tính bằng miligiây)
-    const CHECK_INTERVAL = 500; // Kiểm tra mỗi 0.5 giây
+    const CHECK_INTERVAL_MAIN = 500; // Kiểm tra chính mỗi 0.5 giây
     const DELAY_AFTER_START_CLICK = 1500; // Thời gian chờ sau khi click BẮT ĐẦU VẤN ĐÁP
-    const DELAY_AFTER_ANSWER_CLICK = 500; // Thời gian chờ sau khi click đáp án (để web kịp chuyển câu)
-    const MAX_WAIT_FOR_NEW_QUESTION = 5000; // Thời gian tối đa chờ câu hỏi mới (5 giây)
+    const WAIT_FOR_NEXT_QUESTION_INTERVAL = 1000; // Kiểm tra câu hỏi mới mỗi 1 giây (được dùng trong setTimeout)
+    const MAX_WAIT_FOR_NEXT_QUESTION_ATTEMPTS = 10; // Tối đa 10 lần kiểm tra (tổng 10 giây)
+    const DELAY_AFTER_ANSWER_CLICK_SUCCESS = 750; // Thời gian chờ sau khi click đáp án thành công
+    const DELAY_AFTER_ANSWER_CLICK_FAIL = 2000; // Thời gian chờ sau khi click đáp án thất bại (để thử lại)
+
 
     // --- Biến Trạng Thái ---
     let questionDataCache = null;
     let quizStarted = false;
-    let questionsAnsweredCount = 0;
+    let questionsAnsweredCount = 0; // Sẽ được tính lại dựa trên UI
     let mainIntervalId = null;
+    let questionProcessingIntervalId = null;
     let isFetchingQuestions = false;
-    let lastQuestionText = ''; // Biến để lưu câu hỏi cuối cùng
-    let waitForNewQuestionTimeout = null; // Timeout cho việc chờ câu hỏi mới
+    let lastQuestionText = '';
+    let currentWaitAttempts = 0;
+    let isWaitingForNextQuestion = false;
 
     // --- Các Hàm Hỗ Trợ ---
 
@@ -90,12 +95,16 @@
             log('Overlay created.');
         }
 
+        // Đếm số câu hỏi đã trả lời thành công dựa trên UI
+        const correctCircles = document.querySelectorAll('#progress .progress-circle.correct');
+        const currentAnsweredCount = correctCircles ? correctCircles.length : 0;
+
         overlay.innerHTML = `
             <p><strong>Trạng thái:</strong> <span style="color: yellow;">${statusText}</span></p>
             <p><strong>Câu hỏi:</strong> <span style="color: lightblue;">${questionText}</span></p>
             <p><strong>Đáp án:</strong> <span style="color: lightgreen;">${answerText}</span></p>
             <p><strong>Cách tìm:</strong> <em>${methodText}</em></p>
-            <p><strong>Đã trả lời:</strong> ${questionsAnsweredCount}/5</p>
+            <p><strong>Đã trả lời:</strong> ${currentAnsweredCount}/5</p>
         `;
     }
 
@@ -172,7 +181,22 @@
     }
 
     /**
+     * Bắt đầu hoặc tiếp tục quá trình xử lý câu hỏi/đáp án.
+     */
+    function startQuestionProcessing() {
+        if (questionProcessingIntervalId) {
+            clearInterval(questionProcessingIntervalId);
+            log('Cleared existing question processing interval (ID: ' + questionProcessingIntervalId + ').');
+        }
+        log('Starting question processing interval.');
+        isWaitingForNextQuestion = false; // Reset cờ chờ khi bắt đầu xử lý
+        currentWaitAttempts = 0; // Reset số lần chờ
+        questionProcessingIntervalId = setInterval(processQuestionAnswerLogic, CHECK_INTERVAL_MAIN);
+    }
+
+    /**
      * Hàm chính xử lý logic vấn đáp.
+     * Chịu trách nhiệm kiểm tra nút bắt đầu quiz.
      */
     function processQuizOrQuestionStep() {
         // Kiểm tra xem dữ liệu câu hỏi đã sẵn sàng chưa
@@ -193,82 +217,110 @@
                 startButton.click();
                 updateAnswerOverlay('...', '...', 'Đã nhấn BẮT ĐẦU', '');
                 quizStarted = true;
-                questionsAnsweredCount = 0;
+                questionsAnsweredCount = 0; // Sẽ được tính lại dựa trên UI
                 lastQuestionText = ''; // Reset câu hỏi cuối cùng khi bắt đầu quiz mới
-                // Đợi một chút để câu hỏi đầu tiên tải
+
+                // Dừng main interval vì nhiệm vụ của nó đã hoàn thành (click nút START)
+                if (mainIntervalId) {
+                    clearInterval(mainIntervalId);
+                    mainIntervalId = null; // Đặt về null để biết nó đã dừng
+                    log('Main interval stopped after clicking start button.');
+                }
+
+                // Chờ một chút rồi bắt đầu xử lý câu hỏi đầu tiên
                 setTimeout(() => {
-                    log('Delay after clicking start button complete. Proceeding to process first question.');
-                    processQuestionAnswerLogic();
+                    log('Delay after clicking start button complete. Starting initial question processing.');
+                    startQuestionProcessing(); // Bắt đầu interval xử lý câu hỏi riêng
                 }, DELAY_AFTER_START_CLICK);
-                return;
             }
         } else {
-            if (quizStarted) {
-                processQuestionAnswerLogic();
-            } else {
-                updateAnswerOverlay('...', '...', 'Đang chờ Quiz bắt đầu', '');
+            // Nếu nút start không còn hiển thị và quiz chưa bắt đầu, có thể nó đã chuyển sang màn hình khác
+            if (!quizStarted) {
+                updateAnswerOverlay('...', '...', 'Đang chờ Quiz bắt đầu (nút ẩn)', '');
             }
+            // Nếu quizStarted là true, logic đã được chuyển sang questionProcessingIntervalId,
+            // mainIntervalId sẽ không chạy nữa.
         }
     }
 
     /**
-     * Xử lý logic tìm câu hỏi và trả lời.
+     * Hàm kiểm tra và xử lý câu hỏi mới.
+     * Hàm này được gọi định kỳ bởi questionProcessingIntervalId.
      */
     function processQuestionAnswerLogic() {
-        log(`Current questions answered: ${questionsAnsweredCount}/5`);
+        if (isWaitingForNextQuestion) {
+            // log('Already in waiting state for next question. Skipping this interval.');
+            return; // Nếu đang trong trạng thái chờ, không làm gì cả ở lần gọi này
+        }
 
+        // Lấy số câu hỏi đã trả lời thành công dựa trên UI
+        const correctCircles = document.querySelectorAll('#progress .progress-circle.correct');
+        questionsAnsweredCount = correctCircles ? correctCircles.length : 0;
+
+        // --- Kiểm tra trạng thái kết thúc Quiz ---
         if (questionsAnsweredCount >= 5) {
-            log('Quiz completed (5/5 questions answered). Script will stop.', 'info');
+            log('Quiz completed (5/5 questions answered based on UI). Script will stop.', 'info');
             updateAnswerOverlay('Hoàn thành!', 'Thành công!', 'Đã xong 5/5 câu', '');
-            clearInterval(mainIntervalId);
+            if (questionProcessingIntervalId) {
+                clearInterval(questionProcessingIntervalId);
+                questionProcessingIntervalId = null;
+            }
             return;
         }
 
-        // --- Bổ sung kiểm tra sự hiện diện và nội dung của câu hỏi ---
+        // --- Lấy thông tin câu hỏi và lựa chọn hiện tại ---
         const questionElement = document.getElementById('question');
         const currentQuestionText = questionElement ? questionElement.innerText.trim() : '';
-
-        // --- Kiểm tra câu hỏi mới đã xuất hiện chưa ---
-        if (!questionElement || currentQuestionText === '' || currentQuestionText === lastQuestionText) {
-            // Nếu câu hỏi chưa có, hoặc rỗng, hoặc vẫn là câu hỏi cũ, thì đợi
-            log(`Waiting for a new question. Current: "${currentQuestionText}", Last: "${lastQuestionText}"`, 'warn');
-            updateAnswerOverlay('...', '...', 'Đang chờ câu hỏi mới...', '');
-
-            // Đặt timeout để tránh chờ vô hạn nếu có vấn đề
-            if (!waitForNewQuestionTimeout) {
-                waitForNewQuestionTimeout = setTimeout(() => {
-                    log('Timeout: New question did not appear within ' + MAX_WAIT_FOR_NEW_QUESTION + 'ms.', 'error');
-                    updateAnswerOverlay('Lỗi!', 'Không tải được câu hỏi mới', 'Dừng Script!', '');
-                    clearInterval(mainIntervalId);
-                }, MAX_WAIT_FOR_NEW_QUESTION);
-            }
-            return; // Thoát và đợi lần kiểm tra tiếp theo
-        }
-
-        // Nếu câu hỏi mới đã xuất hiện, xóa timeout chờ
-        if (waitForNewQuestionTimeout) {
-            clearTimeout(waitForNewQuestionTimeout);
-            waitForNewQuestionTimeout = null;
-        }
-        log(`Extracted new question: "${currentQuestionText}"`);
-        lastQuestionText = currentQuestionText; // Cập nhật câu hỏi cuối cùng đã thấy
-
-        // --- Bổ sung kiểm tra sự hiện diện của các lựa chọn ---
         const optionElements = document.querySelectorAll('.options .option');
-        if (optionElements.length === 0) {
-            log('Option elements not found. Waiting for options to appear...', 'warn');
-            updateAnswerOverlay(currentQuestionText, '...', 'Đang chờ lựa chọn...', '');
-            return; // Thoát và đợi lần kiểm tra tiếp theo
+        const progressDiv = document.getElementById('progress');
+        const progressCircles = document.querySelectorAll('#progress .progress-circle'); // Tất cả các circle, không chỉ correct
+
+        // Điều kiện để coi là "chưa sẵn sàng" hoặc "chưa phải câu hỏi mới":
+        // 1. Không tìm thấy thẻ câu hỏi, HOẶC nội dung câu hỏi rỗng.
+        // 2. KHÔNG tìm thấy các lựa chọn đáp án.
+        // 3. KHÔNG tìm thấy thanh tiến trình (hoặc thanh tiến trình rỗng).
+        // 4. Nội dung câu hỏi hiện tại vẫn giống hệt câu hỏi trước (chỉ check khi số câu trả lời trên UI chưa tăng).
+        const isQuestionNotReadyOrSame =
+            !questionElement || currentQuestionText === '' ||
+            optionElements.length === 0 ||
+            !progressDiv || progressCircles.length === 0 ||
+            (questionsAnsweredCount === correctCircles.length && currentQuestionText === lastQuestionText); // Sửa điều kiện này
+
+        if (isQuestionNotReadyOrSame) {
+            // Nếu chưa sẵn sàng hoặc vẫn là câu hỏi cũ, bắt đầu hoặc tiếp tục chờ
+            if (currentWaitAttempts < MAX_WAIT_FOR_NEXT_QUESTION_ATTEMPTS) {
+                currentWaitAttempts++;
+                log(`Waiting for new question and options (Attempt ${currentWaitAttempts}/${MAX_WAIT_FOR_NEXT_QUESTION_ATTEMPTS}). Current Q: "${currentQuestionText}", Last Q: "${lastQuestionText}", Correct circles: ${correctCircles.length}`, 'warn');
+                updateAnswerOverlay(currentQuestionText || '...', '...', `Đang chờ câu hỏi mới (${currentWaitAttempts}/${MAX_WAIT_FOR_NEXT_QUESTION_ATTEMPTS})...`, '');
+
+                isWaitingForNextQuestion = true; // Đặt cờ chờ
+
+                // Dừng interval hiện tại để kiểm soát chính xác thời gian chờ 1 giây
+                if (questionProcessingIntervalId) {
+                     clearInterval(questionProcessingIntervalId);
+                     questionProcessingIntervalId = null;
+                }
+                setTimeout(() => {
+                    isWaitingForNextQuestion = false; // Bỏ cờ chờ
+                    startQuestionProcessing(); // Khởi động lại interval xử lý câu hỏi
+                }, WAIT_FOR_NEXT_QUESTION_INTERVAL);
+                return; // Thoát khỏi hàm hiện tại
+            } else {
+                log('Timeout: New question or options did not appear within ' + MAX_WAIT_FOR_NEXT_QUESTION_ATTEMPTS + ' seconds. Stopping script.', 'error');
+                updateAnswerOverlay('Lỗi!', 'Không tải được câu hỏi mới', 'Dừng Script!', '');
+                if (questionProcessingIntervalId) {
+                    clearInterval(questionProcessingIntervalId);
+                    questionProcessingIntervalId = null;
+                }
+                return;
+            }
         }
 
-        // --- Bổ sung kiểm tra tiến trình (progress circles) ---
-        const progressDiv = document.getElementById('progress');
-        const progressCircles = document.querySelectorAll('#progress .progress-circle');
-        if (!progressDiv || progressCircles.length === 0) {
-            log('Progress indicators not found. Waiting for quiz to be in active question state...', 'warn');
-            updateAnswerOverlay(currentQuestionText, '...', 'Đang chờ tiến trình...', '');
-            return; // Thoát và đợi lần kiểm tra tiếp theo
-        }
+        // Nếu đã đến đây, nghĩa là câu hỏi mới đã xuất hiện và sẵn sàng
+        currentWaitAttempts = 0; // Reset bộ đếm chờ
+        isWaitingForNextQuestion = false; // Đảm bảo cờ chờ được tắt
+        // lastQuestionText sẽ được cập nhật SAU KHI câu trả lời được click thành công và UI cập nhật
+        log(`Processing question: "${currentQuestionText}" (Questions answered via UI: ${questionsAnsweredCount}/5)`);
 
         const questionAnswers = questionDataCache.questions;
         let foundAnswer = null;
@@ -300,26 +352,100 @@
 
         if (foundAnswer) {
             let clicked = false;
+            let targetOptionElement = null;
+
             for (let i = 0; i < optionElements.length; i++) {
-                const optionText = optionElements[i].innerText.trim();
-                if (optionText === foundAnswer) {
-                    log(`Clicking correct answer: "${optionText}"`);
-                    optionElements[i].click();
-                    clicked = true;
-                    questionsAnsweredCount++;
-                    updateAnswerOverlay(currentQuestionText, foundAnswer, 'Đã trả lời!', answerMethod);
-                    // Không cần setTimeout ở đây nữa, vì logic chờ câu hỏi mới sẽ xử lý
-                    // việc này một cách tự nhiên ở lần gọi processQuestionAnswerLogic tiếp theo.
+                const optionTextOnPage = optionElements[i].textContent.trim();
+
+                // So sánh chính xác hoặc so sánh đã chuẩn hóa tùy trường hợp
+                const isMatch = (optionTextOnPage === foundAnswer) ||
+                                (optionTextOnPage.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '') === foundAnswer.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, ''));
+
+                if (isMatch) {
+                    targetOptionElement = optionElements[i];
+                    log(`Identified potential correct answer element: "${optionTextOnPage}"`);
                     break;
                 }
             }
-            if (!clicked) {
-                log(`Found answer "${foundAnswer}" in data but could not click it on page (option text mismatch or element not interactable).`, 'error');
-                updateAnswerOverlay(currentQuestionText, foundAnswer, 'Lỗi click đáp án!', answerMethod);
+
+            if (targetOptionElement) {
+                try {
+                    // Cố gắng click vào phần tử
+                    targetOptionElement.click();
+                    log(`Attempted to click answer: "${targetOptionElement.textContent.trim()}"`);
+
+                    // KHÔNG tăng questionsAnsweredCount ở đây, mà sẽ để nó tự cập nhật từ UI
+
+                    // Cập nhật lastQuestionText sau khi click, để logic chờ câu hỏi mới có thể hoạt động
+                    lastQuestionText = currentQuestionText;
+                    updateAnswerOverlay(currentQuestionText, foundAnswer, 'Đã click đáp án!', answerMethod);
+
+                    // Dừng interval hiện tại sau khi click thành công (hoặc cố gắng click)
+                    if (questionProcessingIntervalId) {
+                        clearInterval(questionProcessingIntervalId);
+                        questionProcessingIntervalId = null;
+                        log('Question processing interval stopped after attempting to answer.');
+                    }
+                    // Bắt đầu lại quá trình xử lý sau một khoảng trễ ngắn để trang web kịp phản hồi
+                    // Logic sẽ tự chờ cho đến khi số correct circles tăng lên hoặc câu hỏi mới xuất hiện
+                    setTimeout(() => {
+                        log('Short delay after attempting to answer complete. Resuming question processing logic to check UI updates.');
+                        startQuestionProcessing();
+                    }, DELAY_AFTER_ANSWER_CLICK_SUCCESS);
+
+                } catch (e) {
+                    log(`Error clicking answer "${foundAnswer}": ${e.message}. Retrying...`, 'error');
+                    updateAnswerOverlay(currentQuestionText, foundAnswer, 'Lỗi click đáp án!', answerMethod);
+                    // Nếu click lỗi, dừng interval và thử lại sau một khoảng trễ lớn hơn
+                    if (questionProcessingIntervalId) {
+                        clearInterval(questionProcessingIntervalId);
+                        questionProcessingIntervalId = null;
+                    }
+                    setTimeout(() => {
+                        log('Longer delay after failed answer click. Retrying question processing logic.');
+                        startQuestionProcessing();
+                    }, DELAY_AFTER_ANSWER_CLICK_FAIL);
+                }
+            } else {
+                log(`Found answer "${foundAnswer}" in data but could not find a matching clickable option element on page.`, 'error');
+                updateAnswerOverlay(currentQuestionText, foundAnswer, 'Lỗi: Không tìm thấy đáp án trên trang!', answerMethod);
+                // Nếu không tìm thấy phần tử để click, cũng dừng interval và thử lại
+                if (questionProcessingIntervalId) {
+                    clearInterval(questionProcessingIntervalId);
+                    questionProcessingIntervalId = null;
+                }
+                setTimeout(() => {
+                    log('Longer delay after no matching option element found. Retrying question processing logic.');
+                    startQuestionProcessing();
+                }, DELAY_AFTER_ANSWER_CLICK_FAIL);
             }
         } else {
             log(`No answer found for question: "${currentQuestionText}"`, 'warn');
             updateAnswerOverlay(currentQuestionText, 'Không có trong data', 'Chưa tìm thấy', answerMethod);
+
+            // Nếu không tìm thấy đáp án và muốn click ngẫu nhiên để tiếp tục
+            // if (optionElements.length > 0) {
+            //     const randomIndex = Math.floor(Math.random() * optionElements.length);
+            //     log(`Clicking random answer as no match found: ${optionElements[randomIndex].textContent.trim()}`);
+            //     optionElements[randomIndex].click();
+            //     lastQuestionText = currentQuestionText; // Cập nhật để kích hoạt chờ câu hỏi mới
+            //     updateAnswerOverlay(currentQuestionText, optionElements[randomIndex].textContent.trim(), 'Trả lời ngẫu nhiên', 'Ngẫu nhiên');
+            //     if (questionProcessingIntervalId) {
+            //         clearInterval(questionProcessingIntervalId);
+            //         questionProcessingIntervalId = null;
+            //     }
+            //     setTimeout(() => {
+            //         log('Short delay after random answer click. Resuming question processing logic.');
+            //         startQuestionProcessing();
+            //     }, DELAY_AFTER_ANSWER_CLICK_SUCCESS);
+            // } else {
+            //     log('No answer found and no options to click randomly. Stopping script.', 'error');
+            //     updateAnswerOverlay('Lỗi!', 'Không tìm thấy đáp án và lựa chọn', 'Dừng Script!', '');
+            //     if (questionProcessingIntervalId) {
+            //         clearInterval(questionProcessingIntervalId);
+            //         questionProcessingIntervalId = null;
+            //     }
+            // }
         }
     }
 
@@ -330,18 +456,31 @@
         // Xóa bất kỳ interval cũ nào để tránh chạy trùng lặp nếu trang được tải lại
         if (mainIntervalId) {
             clearInterval(mainIntervalId);
+            mainIntervalId = null;
             log('Main interval (ID: ' + mainIntervalId + ') cleared before re-initialization.');
         }
+        if (questionProcessingIntervalId) {
+            clearInterval(questionProcessingIntervalId);
+            questionProcessingIntervalId = null;
+            log('Question processing interval (ID: ' + questionProcessingIntervalId + ') cleared before re-initialization.');
+        }
 
-        // Thiết lập interval chính để liên tục kiểm tra và xử lý
-        mainIntervalId = setInterval(processQuizOrQuestionStep, CHECK_INTERVAL);
-        log(`Main interval (ID: ${mainIntervalId}) set up with interval of ${CHECK_INTERVAL}ms.`);
+        // Reset trạng thái quiz khi khởi tạo
+        quizStarted = false;
+        questionsAnsweredCount = 0; // Sẽ được tính lại dựa trên UI
+        lastQuestionText = '';
+        currentWaitAttempts = 0;
+        isWaitingForNextQuestion = false;
+
+        // Thiết lập interval chính để liên tục kiểm tra nút START
+        mainIntervalId = setInterval(processQuizOrQuestionStep, CHECK_INTERVAL_MAIN);
+        log(`Main interval (ID: ${mainIntervalId}) set up with interval of ${CHECK_INTERVAL_MAIN}ms.`);
 
         // Tải dữ liệu câu hỏi trong nền ngay lập tức
         log('Initiating background fetch of question data.');
         fetchQuestions().then(() => {
             log('Question data successfully loaded in background.');
-            // Sau khi dữ liệu được tải, gọi lần đầu để xử lý nút "BẮT ĐẦU" hoặc câu hỏi
+            // Gọi lần đầu processQuizOrQuestionStep để kiểm tra nút "BẮT ĐẦU"
             processQuizOrQuestionStep();
         }).catch(error => {
             log('Failed to load question data during initialization: ' + error.message, 'error');
@@ -363,8 +502,18 @@
     }
 
     // Lắng nghe sự kiện tải lại trang hoặc điều hướng (Spa mode)
+    // Đảm bảo script khởi động lại nếu trang được tải lại hoàn toàn
     window.addEventListener('load', () => {
         log('Event listener for window "load" attached.');
+        // Clear existing intervals to prevent duplicate runs
+        if (mainIntervalId) {
+            clearInterval(mainIntervalId);
+            mainIntervalId = null;
+        }
+        if (questionProcessingIntervalId) {
+            clearInterval(questionProcessingIntervalId);
+            questionProcessingIntervalId = null;
+        }
         init();
     });
 

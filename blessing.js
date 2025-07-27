@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         HoatHinh3D Tiên duyên
+// @name         HH3D Tiên duyên
 // @namespace    http://tampermonkey.net/
 // @version      2.8
 // @description  Tự động chúc phúc và nhận lì xì
-// @author       Bạn
+// @author       Dr. Trune
 // @match        https://hoathinh3d.gg/phong-cuoi*
 // @grant        none
 // ==/UserScript==

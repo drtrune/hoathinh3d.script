@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         HH3D Diem Danh - Tiên Duyên Style
+// @name         HH3D Điểm danh
 // @namespace    http://tampermonkey.net/
 // @version      2.8
 // @description  Tự động nhấp nút "Điểm Danh"  
-// @author       Bạn
+// @author       Dr. Trune
 // @match        https://hoathinh3d.gg/diem-danh*
 // @grant        none
 // ==/UserScript==

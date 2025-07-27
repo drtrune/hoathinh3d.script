@@ -1,17 +1,15 @@
 // ==UserScript==
 // @name         HoatHinh3D Auto Hoang vực
 // @namespace    http://tampermonkey.net/
-// @version      4.4
+// @version      4.5
 // @description  Tự động nhận thưởng. Tự động tối ưu ngũ hành và chiến đấu theo chu kỳ.
-// @author       Bạn
+// @author       Dr. Trune
 // @match        https://hoathinh3d.gg/hoang-vuc*
 // @grant        none
 // ==/UserScript==
 
 (function() {
     'use strict';
-
-    console.log('[Tự động Tối ưu & Chiến đấu] Script đã được tải.');
 
     // ===============================================
     // CẤU HÌNH CÁC BIẾN THỜI GIAN
@@ -35,10 +33,10 @@
     const DELAY_AFTER_ELEMENT_CHANGE = 1000; // 1.5 giây
     // Độ trễ khi script cần thử lại một hành động (ms)
     const DELAY_BETWEEN_RETRIES_SHORT = 500; // 1 giây
-    const DELAY_BETWEEN_RETRIES_LONG = 1000; // 1.5 giây
+    const DELAY_BETWEEN_RETRIES_LONG = 1000; // 1 giây
 
     // Thời gian tối đa chờ nút nhận thưởng khi khởi động (ms)
-    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 5000; // 5 giây
+    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 5000; // 3 giây
 
 
     // ===============================================
@@ -52,6 +50,7 @@
 
     // Variable to store ID of setTimeout/setInterval for potential clearing
     let currentTimerId = null;
+    let cooldownCountdownIntervalId = null; // New variable for cooldown countdown interval
 
     // ===============================================
     // HÀM TIỆN ÍCH CHUNG
@@ -62,9 +61,6 @@
         const statusElement = document.getElementById('scriptStatus');
         if (statusElement) {
             statusElement.textContent = `Trạng thái: ${message}`;
-            console.log(`[Tự động Tối ưu & Chiến đấu] Cập nhật trạng thái: ${message}`);
-        } else {
-            console.log(`[Tự động Tối ưu & Chiến đấu] Trạng thái: ${message} (Không tìm thấy phần tử status UI)`);
         }
     }
 
@@ -80,11 +76,9 @@
 
             // Check if element is found, is visible (offsetParent not null), and not disabled
             if (foundElement && foundElement.offsetParent !== null && !foundElement.disabled) {
-                console.log(`[Tự động Tối ưu & Chiến đấu] waitForElementStable: Đã tìm thấy "${selector}" và hiển thị/không disabled trong ${Date.now() - startTime}ms (sau ${checkCount} lần kiểm tra).`);
                 clearInterval(intervalId);
                 callback(foundElement);
             } else if (Date.now() - startTime >= timeout) {
-                console.warn(`[Tự động Tối ưu & Chiến đấu] waitForElementStable: HẾT THỜI GIAN chờ "${selector}" sau ${timeout/1000}s. Phần tử không tìm thấy, không hiển thị hoặc bị disabled.`);
                 clearInterval(intervalId);
                 callback(null); // Call with null to indicate timeout
             }
@@ -94,12 +88,10 @@
     // Safe click function that tries MouseEvent then direct click
     function safeClick(element, elementName = 'phần tử') {
         if (!element) {
-            console.error(`[Tự động Tối ưu & Chiến đấu] LỖI: Không thể click vì ${elementName} là null.`);
             updateScriptStatus(`Lỗi: Không click được ${elementName}.`);
             return false;
         }
         if (element.disabled) {
-            console.warn(`[Tự động Tối ưu & Chiến đấu] CẢNH BÁO: ${elementName} bị disabled, không thể click.`);
             updateScriptStatus(`${elementName} bị khóa.`);
             return false;
         }
@@ -111,18 +103,14 @@
                 cancelable: true
             });
             element.dispatchEvent(mouseEvent);
-            console.log(`[Tự động Tối ưu & Chiến đấu] Đã dispatch MouseEvent 'click' cho ${elementName}.`);
             updateScriptStatus(`Đã click ${elementName}.`);
             return true;
         } catch (e) {
-            console.warn(`[Tự động Tối ưu & Chiến đấu] LỖI khi dispatch MouseEvent cho ${elementName}:`, e, "Thử cách click trực tiếp.");
             try {
                 element.click();
-                console.log(`[Tự động Tối ưu & Chiến đấu] Đã click trực tiếp ${elementName}.`);
                 updateScriptStatus(`Đã click ${elementName} (trực tiếp).`);
                 return true;
             } catch (e2) {
-                console.error(`[Tự động Tối ưu & Chiến đấu] LỖI KHÔNG THỂ CLICK ${elementName} (cả 2 cách):`, e2);
                 updateScriptStatus(`Lỗi nghiêm trọng: Không click được ${elementName}.`);
                 return false;
             }
@@ -135,15 +123,12 @@
         if (damageInfoElement && damageInfoElement.offsetParent !== null) {
             const text = damageInfoElement.textContent.trim();
             if (text.includes('giảm') || text.includes('decrease')) {
-                console.log(`[Tự động Tối ưu & Chiến đấu] Phát hiện trạng thái sát thương: GIẢM ("${text}")`);
                 return 'decrease';
             }
             if (text.includes('tăng') || text.includes('increase')) {
-                 console.log(`[Tự động Tối ưu & Chiến đấu] Phát hiện trạng thái sát thương: TĂNG ("${text}")`);
                  return 'increase';
             }
         }
-        console.log('[Tự động Tối ưu & Chiến đấu] Phát hiện trạng thái sát thương: KHÔNG (không có giảm/tăng rõ ràng).');
         return 'none';
     }
 
@@ -151,20 +136,14 @@
     function getCooldownTimeFromElement(cooldownTimerElement) {
         if (cooldownTimerElement && cooldownTimerElement.offsetParent !== null) {
             const text = cooldownTimerElement.textContent.trim();
-            console.log(`[Tự động Tối ưu & Chiến đấu] Đọc văn bản hẹn giờ hồi chiêu: "${text}"`);
-
             const match = text.match(/Chờ (\d+) phút (\d+) giây/);
             if (match) {
                 const minutes = parseInt(match[1]);
                 const seconds = parseInt(match[2]);
                 const totalMilliseconds = (minutes * 60 + seconds) * 1000;
-                console.log(`[Tự động Tối ưu & Chiến đấu] Thời gian hồi chiêu đã phân tích: ${minutes} phút ${seconds} giây (${totalMilliseconds}ms).`);
                 return totalMilliseconds;
-            } else {
-                console.warn('[Tự động Tối ưu & Chiến đấu] Không thể phân tích văn bản hẹn giờ hồi chiêu. Coi như không có hồi chiêu.');
             }
         }
-        console.log('[Tự động Tối ưu & Chiến đấu] Phần tử hẹn giờ hồi chiêu không hiển thị hoặc không có văn bản.');
         return 0;
     }
 
@@ -178,18 +157,14 @@
         // First, explicitly look for the "reward-close" button within the success modal
         waitForElementStable('div.reward-notification.success button.reward-close', (closeButton) => {
             if (closeButton) {
-                console.log('[Tự động Tối ưu & Chiến đấu] Đã tìm thấy nút "reward-close". Đang click để đóng hộp thoại.');
                 setTimeout(() => {
                     if (safeClick(closeButton, 'nút "reward-close"')) {
-                        console.log('[Tự động Tối ưu & Chiến đấu] ĐÃ NHẤP nút "reward-close" THÀNH CÔNG! Đang chờ hộp thoại biến mất.');
                         waitForModalToClose(callback, 'hộp thoại "Thành công!"');
                     } else {
-                        console.warn('[Tự động Tối ưu & Chiến đấu] KHÔNG THỂ click nút "reward-close". Vẫn thử chờ hộp thoại biến mất.');
                         waitForModalToClose(callback, 'hộp thoại "Thành công!" (dự phòng)');
                     }
                 }, DELAY_BEFORE_CLICK);
             } else {
-                console.warn('[Tự động Tối ưu & Chiến đấu] Không tìm thấy nút "reward-close". Có thể hộp thoại tự đóng hoặc đã có lỗi. Đang chờ hộp thoại biến mất.');
                 waitForModalToClose(callback, 'hộp thoại "Thành công!" (không nút đóng)');
             }
         }, TIMEOUT_ELEMENT_STABLE);
@@ -203,18 +178,14 @@
         let checkAttempts = 0;
         const maxAttempts = TIMEOUT_MODAL_CLOSE / INTERVAL_MODAL_CLOSE; // Check based on configured timeout/interval
 
-        console.log(`[Tự động Tối ưu & Chiến đấu] Đang chờ ${modalName} đóng...`);
-
         const intervalId = setInterval(() => {
             const modalElement = document.querySelector(modalSelector);
             checkAttempts++;
 
             if (!modalElement || modalElement.offsetParent === null || modalElement.style.display === 'none') {
-                console.log(`[Tự động Tối ưu & Chiến đấu] ${modalName} đã đóng hoặc không còn hiển thị sau ${checkAttempts * INTERVAL_MODAL_CLOSE}ms.`);
                 clearInterval(intervalId);
                 callback();
             } else if (checkAttempts >= maxAttempts) {
-                console.warn(`[Tự động Tối ưu & Chiến đấu] HẾT THỜI GIAN chờ ${modalName} đóng. Có thể hộp thoại vẫn còn mở hoặc bị ẩn. Vẫn tiếp tục.`);
                 clearInterval(intervalId);
                 callback();
             }
@@ -224,38 +195,30 @@
     // Function to handle element change and confirmation
     function changeElementAndConfirm() {
         updateScriptStatus('Đang thay đổi ngũ hành...');
-        console.log('[Tự động Tối ưu & Chiến đấu] Bắt đầu quá trình thay đổi ngũ hành.');
         waitForElementStable('button#change-element-button.change-element-button', (changeButton) => {
             if (changeButton) {
                 setTimeout(() => {
                     if (safeClick(changeButton, 'nút "Thay đổi"')) {
-                        console.log('[Tự động Tối ưu & Chiến đấu] Đã nhấp nút "Thay đổi".');
                         waitForElementStable('button.swal2-confirm.swal2-styled', (confirmButton) => {
                             if (confirmButton) {
                                 setTimeout(() => {
                                     if (safeClick(confirmButton, 'nút "Đổi" (xác nhận)')) {
-                                        console.log('[Tự động Tối ưu & Chiến đấu] Đã nhấp nút "Đổi" (xác nhận).');
                                         setTimeout(() => {
-                                            console.log('[Tự động Tối ưu & Chiến đấu] Đang chờ trạng thái sát thương cập nhật sau khi thay đổi ngũ hành...');
                                             checkRemainingAttacksThenContinue(); // Back to main loop after element change
                                         }, DELAY_AFTER_ELEMENT_CHANGE);
                                     } else {
-                                        console.log('[Tự động Tối ưu & Chiến đấu] Không thể click nút "Đổi" (xác nhận). Đang thử lại thay đổi ngũ hành nếu cần.');
                                         setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
                                     }
                                 }, DELAY_BEFORE_CLICK + 200); // Slightly longer delay for confirm button
                             } else {
-                                console.log('[Tự động Tối ưu & Chiến đấu] Nút "Đổi" (xác nhận) không thể tìm thấy hoặc hiển thị. Đang thử lại thay đổi ngũ hành nếu cần.');
                                 setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
                             }
                         }, TIMEOUT_ELEMENT_STABLE);
                     } else {
-                        console.log('[Tự động Tối ưu & Chiến đấu] Không thể click nút "Thay đổi". Đang thử lại toàn bộ quá trình.');
                         setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
                     }
                 }, DELAY_BEFORE_CLICK);
             } else {
-                console.log('[Tự động Tối ưu & Chiến đấu] Nút "Thay đổi" không thể tìm thấy hoặc hiển thị. Đang thử lại toàn bộ quá trình.');
                 setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
             }
         }, TIMEOUT_ELEMENT_STABLE);
@@ -264,22 +227,18 @@
     // Initiates battle by clicking "Khiêu chiến"
     function startBattleNow() {
         updateScriptStatus('Đang khiêu chiến...');
-        console.log('[Tự động Tối ưu & Chiến đấu] Bắt đầu quá trình chiến đấu: Nhấp "Khiêu chiến".');
         const battleButtonSelector = 'button.battle-button#battle-button';
 
         waitForElementStable(battleButtonSelector, (battleButton) => {
             if (battleButton) {
                 setTimeout(() => {
                     if (safeClick(battleButton, 'nút "Khiêu chiến"')) {
-                        console.log('[Tự động Tối ưu & Chiến đấu] ĐÃ NHẤP nút "Khiêu chiến" THÀNH CÔNG! Bây giờ đang chờ nút "Tấn Công"...');
                         clickAttackButton();
                     } else {
-                        console.error('[Tự động Tối ưu & Chiến đấu] KHÔNG THỂ NHẤP nút "Khiêu chiến". Thử lại...');
                         setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_LONG); // Retry main loop
                     }
                 }, DELAY_BEFORE_CLICK);
             } else {
-                console.log('[Tự động Tối ưu & Chiến đấu] Nút "Khiêu chiến" không thể tìm thấy hoặc hiển thị. Sẽ kiểm tra lại sớm.');
                 setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_LONG); // Retry main loop
             }
         }, TIMEOUT_ELEMENT_STABLE);
@@ -288,25 +247,21 @@
     // Clicks the "Tấn Công" button
     function clickAttackButton() {
         updateScriptStatus('Đang tấn công...');
-        console.log('[Tự động Tối ưu & Chiến đấu] Đang cố gắng nhấp nút "Tấn Công".');
         const attackButtonSelector = 'button.attack-button';
 
         waitForElementStable(attackButtonSelector, (attackButton) => {
             if (attackButton) {
                 setTimeout(() => {
                     if (safeClick(attackButton, 'nút "Tấn Công"')) {
-                        console.log('[Tự động Tối ưu & Chiến đấu] ĐÃ NHẤP nút "Tấn Công" THÀNH CÔNG! Trận chiến bây giờ sẽ bắt đầu.');
                         // After initiating attack, wait for post-battle state (reward/back button)
                         setTimeout(() => {
                             checkPostBattleState();
                         }, DELAY_AFTER_ELEMENT_CHANGE); // Give a bit of time for battle to conclude or state to change
                     } else {
-                        console.error('[Tự động Tối ưu & Chiến đấu] KHÔNG THỂ NHẤP nút "Tấn Công". Thử lại...');
                         setTimeout(clickAttackButton, DELAY_BETWEEN_RETRIES_SHORT);
                     }
                 }, DELAY_BEFORE_CLICK + 1000); // Slightly longer delay for attack button
             } else {
-                console.log('[Tự động Tối ưu & Chiến đấu] Nút "Tấn Công" không thể tìm thấy hoặc hiển thị. Đang thử lại kiểm tra.');
                 setTimeout(clickAttackButton, DELAY_BETWEEN_RETRIES_SHORT);
             }
         }, TIMEOUT_ELEMENT_STABLE + 5000); // More time for attack button as it appears after battle start
@@ -315,26 +270,20 @@
     // Checks post-battle state (Reward or Back button)
     function checkPostBattleState() {
         updateScriptStatus('Đang chờ kết quả trận đấu...');
-        console.log('[Tự động Tối ưu & Chiến đấu] Đang kiểm tra trạng thái sau trận đấu: tìm nút "Nhận thưởng" hoặc "Trở lại".');
 
         waitForElementStable('button#reward-button.reward-button', (rewardButton) => {
             if (rewardButton) {
-                console.log('[Tự động Tối ưu & Chiến đấu] Đã tìm thấy nút "Nhận thưởng". Đang click để nhận thưởng.');
                 updateScriptStatus('Đã tìm thấy: Nhận thưởng.');
                 setTimeout(() => {
                     if (safeClick(rewardButton, 'nút "Nhận thưởng"')) {
-                        console.log('[Tự động Tối ưu & Chiến đấu] ĐÃ NHẤP nút "Nhận thưởng" THÀNH CÔNG! Đang chờ hộp thoại đóng...');
                         clickRewardCloseButtonAndThenWaitForModalToClose(() => {
-                            console.log('[Tự động Tối ưu & Chiến đấu] Hộp thoại nhận thưởng đã đóng. Quay lại kiểm tra trạng thái lượt đánh.');
                             checkRemainingAttacksThenContinue(); // Back to main loop after collecting reward
                         });
                     } else {
-                        console.error('[Tự động Tối ưu & Chiến đấu] LỖI khi nhấp nút "Nhận thưởng" sau trận đấu. Vẫn quay lại kiểm tra trạng thái lượt đánh.');
                         setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
                     }
                 }, DELAY_BEFORE_CLICK);
             } else {
-                console.log('[Tự động Tối ưu & Chiến đấu] Không tìm thấy nút "Nhận thưởng". Đang tìm nút "Trở lại".');
                 clickBackButton();
             }
         }, TIMEOUT_ELEMENT_STABLE);
@@ -343,25 +292,20 @@
     // Clicks the "Trở lại" button
     function clickBackButton() {
         updateScriptStatus('Đang đóng hộp thoại...');
-        console.log('[Tự động Tối ưu & Chiến đấu] Đang cố gắng nhấp nút "Trở lại" để đóng hộp thoại.');
         const backButtonSelector = 'button.back-button';
 
         waitForElementStable(backButtonSelector, (backButton) => {
             if (backButton) {
                 setTimeout(() => {
                     if (safeClick(backButton, 'nút "Trở lại"')) {
-                        console.log('[Tự động Tối ưu & Chiến đấu] ĐÃ NHẤP nút "Trở lại" THÀNH CÔNG! Hộp thoại đã đóng. Quay lại kiểm tra trạng thái lượt đánh.');
                         waitForModalToClose(() => {
-                            console.log('[Tự động Tối ưu & Chiến đấu] Hộp thoại trở lại đã đóng. Quay lại kiểm tra trạng thái lượt đánh.');
                             checkRemainingAttacksThenContinue(); // Back to main loop after clicking back
                         }, 'hộp thoại trở lại');
                     } else {
-                        console.error('[Tự động Tối ưu & Chiến đấu] LỖI khi nhấp nút "Trở lại". Vẫn quay lại kiểm tra trạng thái lượt đánh.');
                         setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
                     }
                 }, DELAY_BEFORE_CLICK);
             } else {
-                console.log('[Tự động Tối ưu & Chiến đấu] Nút "Trở lại" không thể tìm thấy hoặc hiển thị. Có thể trang đã tự chuyển. Quay lại kiểm tra trạng thái lượt đánh.');
                 setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
             }
         }, TIMEOUT_ELEMENT_STABLE);
@@ -370,27 +314,23 @@
     // Checks remaining attacks and decides whether to continue the cycle or stop
     function checkRemainingAttacksThenContinue() {
         updateScriptStatus('Kiểm tra lượt đánh...');
-        console.log('[Tự động Tối ưu & Chiến đấu] Kiểm tra lượt đánh còn lại trước khi tiếp tục chu kỳ.');
         const remainingAttacksElement = document.querySelector('div.remaining-attacks');
         if (remainingAttacksElement) {
             const attacksText = remainingAttacksElement.textContent;
             const match = attacksText.match(/Lượt đánh còn lại:\s*(\d+)/);
             if (match) {
                 const remainingAttacks = parseInt(match[1]);
-                console.log(`[Tự động Tối ưu & Chiến đấu] Lượt đánh còn lại: ${remainingAttacks}`);
 
                 if (remainingAttacks <= 0) {
-                    console.log('[Tự động Tối ưu & Chiến đấu] HẾT LƯỢT ĐÁNH. Dừng script.');
                     updateScriptStatus('HẾT LƯỢT ĐÁNH. Dừng script.');
                     if (currentTimerId) clearTimeout(currentTimerId); // Clear any pending timers
+                    if (cooldownCountdownIntervalId) clearInterval(cooldownCountdownIntervalId); // Clear countdown interval
                     return; // Stop script completely
                 }
             } else {
-                console.warn(`[Tự động Tối ưu & Chiến đấu] Không thể đọc số lượt đánh còn lại từ văn bản: "${attacksText}". Vẫn tiếp tục chu kỳ.`);
                 updateScriptStatus(`Không đọc được lượt đánh. Tiếp tục...`);
             }
         } else {
-            console.warn('[Tự động Tối ưu & Chiến đấu] Không tìm thấy phần tử hiển thị lượt đánh còn lại. Vẫn tiếp tục chu kỳ.');
             updateScriptStatus(`Không tìm thấy lượt đánh. Tiếp tục...`);
         }
 
@@ -401,21 +341,48 @@
     // Main battle loop: checks cooldown, then processes element and battle
     function startBattleCycle() {
         updateScriptStatus('Kiểm tra hồi chiêu...');
-        console.log('[Tự động Tối ưu & Chiến đấu] Bắt đầu vòng lặp chiến đấu: Kiểm tra cooldown.');
 
         waitForElementStable('#countdown-timer', (cooldownTimerElement) => {
-            const cooldownMs = getCooldownTimeFromElement(cooldownTimerElement);
+            let cooldownMs = getCooldownTimeFromElement(cooldownTimerElement);
             if (cooldownMs > 0) {
-                const waitTime = cooldownMs + COOLDOWN_BUFFER_MS;
-                console.log(`[Tự động Tối ưu & Chiến đấu] Phát hiện hồi chiêu. Đang chờ ${waitTime / 1000} giây trước khi thử lại.`);
-                updateScriptStatus(`Đang chờ hồi chiêu (${Math.ceil(waitTime / 1000)}s)...`);
+                const endTime = Date.now() + cooldownMs + COOLDOWN_BUFFER_MS;
+                
+                // Clear any existing countdown interval
+                if (cooldownCountdownIntervalId) clearInterval(cooldownCountdownIntervalId);
+
+                // Start updating UI every second
+                cooldownCountdownIntervalId = setInterval(() => {
+                    const remainingTime = endTime - Date.now();
+                    if (remainingTime > 0) {
+                        const totalSeconds = Math.ceil(remainingTime / 1000);
+                        const minutes = Math.floor(totalSeconds / 60);
+                        const seconds = totalSeconds % 60;
+                        updateScriptStatus(`Đang chờ hồi chiêu (${minutes}m ${seconds}s)...`);
+                    } else {
+                        // Cooldown finished, clear interval and proceed
+                        clearInterval(cooldownCountdownIntervalId);
+                        cooldownCountdownIntervalId = null;
+                        checkRemainingAttacksThenContinue(); // Re-enter loop after cooldown
+                    }
+                }, 1000); // Update every 1 second
+
+                // Set a single timeout for when the cooldown is actually over
                 if (currentTimerId) clearTimeout(currentTimerId); // Clear old timer
                 currentTimerId = setTimeout(() => {
-                    console.log('[Tự động Tối ưu & Chiến đấu] Hồi chiêu đã kết thúc. Đang kiểm tra lại trạng thái lượt đánh.');
-                    checkRemainingAttacksThenContinue(); // Re-enter loop after cooldown
-                }, waitTime);
+                    // This timeout will trigger after the countdown interval has already handled the 'remainingTime <= 0' case.
+                    // It's a fallback to ensure the main flow continues even if the interval somehow gets stuck.
+                    if (cooldownCountdownIntervalId) clearInterval(cooldownCountdownIntervalId);
+                    cooldownCountdownIntervalId = null;
+                    // `checkRemainingAttacksThenContinue` should be called by the interval's `remainingTime <= 0` logic.
+                    // If this timeout triggers, it means the interval logic might not have, so call it here as a safety.
+                    if (!document.querySelector('#countdown-timer') || getCooldownTimeFromElement(document.querySelector('#countdown-timer')) === 0) {
+                         checkRemainingAttacksThenContinue();
+                    }
+                }, cooldownMs + COOLDOWN_BUFFER_MS + 2000); // Add a bit more buffer for the final timeout
+
             } else {
-                console.log('[Tự động Tối ưu & Chiến đấu] Không có hồi chiêu đang hoạt động. Tiến hành logic ngũ hành và chiến đấu.');
+                if (cooldownCountdownIntervalId) clearInterval(cooldownCountdownIntervalId); // Ensure interval is clear
+                cooldownCountdownIntervalId = null;
                 processElementAndBattle();
             }
         }, TIMEOUT_ELEMENT_STABLE);
@@ -424,25 +391,22 @@
     // Processes elemental optimization based on user priority and then starts battle
     function processElementAndBattle() {
         updateScriptStatus('Kiểm tra ngũ hành...');
-        console.log('[Tự động Tối ưu & Chiến đấu] Bắt đầu quá trình chính: Kiểm tra Ngũ hành -> Thay đổi nếu cần -> Khiêu chiến -> Tấn Công.');
         const currentDamageStatus = getDamageStatus(); // 'decrease', 'increase', or 'none'
 
         if (currentPriority === 'no-decrease') {
-            console.log(`[Tự động Tối ưu & Chiến đấu] Ưu tiên hiện tại: "Không bị giảm sát thương". Trạng thái sát thương: "${currentDamageStatus}".`);
             if (currentDamageStatus === 'decrease') {
-                console.warn('[Tự động Tối ưu & Chiến đấu] Sát thương đang BỊ GIẢM! Bắt đầu thay đổi ngũ hành để tránh bị giảm.');
+                updateScriptStatus('Sát thương bị GIẢM! Đang tối ưu ngũ hành.');
                 changeElementAndConfirm();
             } else {
-                console.log('[Tự động Tối ưu & Chiến đấu] Sát thương KHÔNG bị giảm. Tiếp tục bắt đầu chiến đấu.');
+                updateScriptStatus('Sát thương KHÔNG bị giảm. Bắt đầu chiến đấu.');
                 startBattleNow();
             }
         } else if (currentPriority === 'seek-increase') {
-            console.log(`[Tự động Tối ưu & Chiến đấu] Ưu tiên hiện tại: "Tìm tăng sát thương". Trạng thái sát thương: "${currentDamageStatus}".`);
             if (currentDamageStatus === 'increase') {
-                console.log('[Tự động Tối ưu & Chiến đấu] Sát thương đang ĐƯỢC TĂNG! Tiếp tục bắt đầu chiến đấu.');
+                updateScriptStatus('Sát thương được TĂNG! Bắt đầu chiến đấu.');
                 startBattleNow();
             } else {
-                console.warn(`[Tự động Tối ưu & Chiến đấu] Sát thương KHÔNG được tăng (trạng thái: ${currentDamageStatus}). Bắt đầu thay đổi ngũ hành để cố gắng tăng.`);
+                updateScriptStatus(`Sát thương KHÔNG tăng. Đang tối ưu ngũ hành.`);
                 changeElementAndConfirm();
             }
         }
@@ -463,7 +427,6 @@
     // Creates the UI for elemental priority selection and script status
     function createUI() {
         if (isUIMade) {
-            console.log('[Tự động Tối ưu & Chiến đấu] UI đã được tạo, bỏ qua việc tạo.');
             return;
         }
 
@@ -542,17 +505,11 @@
                 selectElement.addEventListener('change', (event) => {
                     currentPriority = event.target.value;
                     localStorage.setItem(LOCAL_STORAGE_KEY, currentPriority);
-                    console.log(`[Tự động Tối ưu & Chiến đấu] Ưu tiên ngũ hành đã thay đổi thành: ${currentPriority} và đã lưu.`);
                     updateScriptStatus(`Ưu tiên: ${currentPriority === 'no-decrease' ? 'Không giảm' : 'Tìm tăng'}`);
                 });
 
                 isUIMade = true;
-                console.log('[Tự động Tối ưu & Chiến đấu] UI đã được tạo và căn giữa phía trên nút "Thay đổi".');
-                updateScriptStatus('Sẵn sàng.');
-            } else if (isUIMade) {
-                console.log('[Tự động Tối ưu & Chiến đấu] UI đã được tạo, bỏ qua.');
-            } else {
-                console.warn('[Tự động Tối ưu & Chiến đấu] Không tìm thấy nút mục tiêu cho UI hoặc UI đã tồn tại. UI sẽ không được tạo.');
+                updateScriptStatus('Đang khởi động...'); // Initial status
             }
         }, TIMEOUT_ELEMENT_STABLE);
     }
@@ -564,12 +521,10 @@
     // Main initialization function for the script
     function initializeScript() {
         if (isScriptFullyInitialized) {
-            console.log('[Tự động Tối ưu & Chiến đấu] initializeScript đã được gọi. Bỏ qua lần này.');
             return;
         }
         isScriptFullyInitialized = true;
 
-        console.log('[Tự động Tối ưu & Chiến đấu] Bắt đầu quá trình khởi tạo script (lần đầu).');
         updateScriptStatus('Đang khởi tạo...');
 
         // Create UI first
@@ -578,29 +533,22 @@
         // Check initial state: Is there a reward to claim? Or is the boss sealed?
         waitForElementStable('button#reward-button.reward-button', (rewardButton) => {
             if (rewardButton) {
-                console.log('[Tự động Tối ưu & Chiến đấu] KHỞI ĐỘNG: Phát hiện nút "Nhận thưởng". Đang click...');
                 updateScriptStatus('Khởi tạo: Nhận thưởng...');
                 setTimeout(() => {
                     if (safeClick(rewardButton, 'nút "Nhận thưởng" khởi động')) {
-                        console.log('[Tự động Tối ưu & Chiến đấu] ĐÃ NHẤP nút "Nhận thưởng" THÀNH CÔNG! Đang chờ hộp thoại đóng...');
                         clickRewardCloseButtonAndThenWaitForModalToClose(() => {
-                            console.log('[Tự động Tối ưu & Chiến đấu] Hộp thoại nhận thưởng đã đóng. Boss đã chết và thưởng đã được nhận. Bắt đầu chu kỳ chiến đấu mới.');
                             checkRemainingAttacksThenContinue(); // Start normal cycle
                         });
                     } else {
-                        console.error('[Tự động Tối ưu & Chiến đấu] LỖI khi nhấp nút "Nhận thưởng" khi khởi động. Tiếp tục kiểm tra trạng thái.');
                         checkRemainingAttacksThenContinue(); // Continue to battle cycle if reward click fails
                     }
                 }, DELAY_BEFORE_CLICK);
             } else {
-                console.log('[Tự động Tối ưu & Chiến đấu] KHỞI ĐỘNG: Không tìm thấy nút "Nhận thưởng". Kiểm tra trạng thái "Boss chưa mở Phong Ấn".');
                 const bossSealedElement = document.querySelector('div.highlight-text-box');
                 if (bossSealedElement && bossSealedElement.textContent.includes('Boss chưa mở Phong Ấn')) {
-                    console.log('[Tự động Tối ưu & Chiến đấu] KHỞI ĐỘNG: Phát hiện "Boss chưa mở Phong Ấn". Boss đã chết và thưởng đã nhận. Script sẽ DỪNG tại đây.');
                     updateScriptStatus('Boss đã chết. Dừng.');
                     // Script naturally stops here if boss is sealed, as no battles can be initiated.
                 } else {
-                    console.log('[Tự động Tối ưu & Chiến đấu] KHỞI ĐỘNG: Boss có thể khiêu chiến được. Bắt đầu kiểm tra lượt đánh và logic chiến đấu.');
                     checkRemainingAttacksThenContinue(); // Start the main battle cycle
                 }
             }
@@ -610,7 +558,6 @@
     // --- Entry Point ---
     // Use DOMContentLoaded to ensure basic DOM is ready before trying to initialize
     window.addEventListener('DOMContentLoaded', () => {
-        console.log('[Tự động Tối ưu & Chiến đấu] DOMContentLoaded đã kích hoạt. Bắt đầu initializeScript.');
         initializeScript();
     });
 
@@ -620,12 +567,7 @@
         if (!isUIMade) {
             const changeButton = document.querySelector('button#change-element-button.change-element-button');
             if (changeButton) {
-                console.log('[Tự động Tối ưu & Chiến đấu] MutationObserver (UI): Đã phát hiện nút "Thay đổi" và UI chưa có. Đang cố gắng tạo UI.');
                 createUI();
-                if (isUIMade) { // If UI was successfully made
-                    obs.disconnect(); // Disconnect this observer as its job is done
-                    console.log('[Tự động Tối ưu & Chiến đấu] MutationObserver (UI) đã ngắt kết nối.');
-                }
             }
         }
         // Also, if the script hasn't fully initialized, try to initialize it once key elements appear
@@ -634,16 +576,12 @@
                 document.querySelector('div.damage-info') ||
                 document.querySelector('button.battle-button#battle-button'))
             {
-                console.log('[Tự động Tối ưu & Chiến đấu] MutationObserver (Init): Key elements detected. Attempting script initialization.');
                 initializeScript();
-                // We don't disconnect this observer immediately, as `initializeScript` handles its own `isScriptFullyInitialized` flag.
-                // The main loop will then manage itself.
             }
         }
     });
 
     // Start observing the body for changes
-    console.log('[Tự động Tối ưu & Chiến đấu] Kích hoạt MutationObserver để quan sát nội dung động.');
     uiObserver.observe(document.body, { childList: true, subtree: true });
 
 })();

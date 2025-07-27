@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Luận Võ Speed Up
+// @name         HH3D Luận Võ
 // @namespace    http://tampermonkey.net/
 // @version      1.7
-// @description  Rút ngắn thời gian chờ trong Luận Võ Đường (SweetAlert tự đóng và tăng tốc hoạt ảnh chiến đấu 5s) với một nút gạt duy nhất.
-// @author       Bạn
+// @description  Rút ngắn thời gian chờ trong Luận Võ
+// @author       Dr. Trune
 // @match        https://hoathinh3d.gg/luan-vo-duong*
 // @grant        none
 // ==/UserScript==

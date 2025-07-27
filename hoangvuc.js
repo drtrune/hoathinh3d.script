@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         HoatHinh3D Auto Hoang vực
+// @name         HH3D Hoang vực
 // @namespace    http://tampermonkey.net/
 // @version      4.5
 // @description  Tự động nhận thưởng. Tự động tối ưu ngũ hành và chiến đấu theo chu kỳ.
@@ -30,13 +30,13 @@
     // Độ trễ trước khi thực hiện click (ms)
     const DELAY_BEFORE_CLICK = 500; // 0.5 giây
     // Độ trễ sau khi thay đổi ngũ hành để game kịp cập nhật (ms)
-    const DELAY_AFTER_ELEMENT_CHANGE = 1000; // 1.5 giây
+    const DELAY_AFTER_ELEMENT_CHANGE = 1000; // 1 giây
     // Độ trễ khi script cần thử lại một hành động (ms)
-    const DELAY_BETWEEN_RETRIES_SHORT = 500; // 1 giây
+    const DELAY_BETWEEN_RETRIES_SHORT = 500; // 0.5 giây
     const DELAY_BETWEEN_RETRIES_LONG = 1000; // 1 giây
 
     // Thời gian tối đa chờ nút nhận thưởng khi khởi động (ms)
-    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 5000; // 3 giây
+    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 3000; // 3 giây
 
 
     // ===============================================

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HH3D Tiên duyên
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/drtrune/hoathinh3d.script
 // @version      2.8
 // @description  Tự động chúc phúc và nhận lì xì
 // @author       Dr. Trune

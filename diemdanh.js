@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HH3D Điểm danh
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/drtrune/hoathinh3d.script
 // @version      2.8
 // @description  Tự động nhấp nút "Điểm Danh"  
 // @author       Dr. Trune

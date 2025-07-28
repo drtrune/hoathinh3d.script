@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name          HH3D Bí Cảnh Tông Môn (Auto)
+// @name          HH3D Bí Cảnh Tông Môn
 // @namespace     https://github.com/drtrune/hoathinh3d.script
 // @version       1.1
 // @description   Tự động khiêu chiến và tấn công boss trong Bí Cảnh Tông Môn, sau đó quay lại màn hình chính.
@@ -360,7 +360,7 @@
                 configDiv.id = 'hh3dBiCanhConfig';
                 configDiv.innerHTML = `
                     <div class="config-row">
-                        <label>Bật/Tắt Auto Boss:</label>
+                        <label>Tự động tấn công boss</label>
                         <label class="switch">
                             <input type="checkbox" id="autoClickToggleSwitch">
                             <span class="slider"></span>

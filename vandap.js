@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Vấn đáp
 // @namespace    http://tampermonkey.net/
-// @version      1.9 // Giữ nguyên phiên bản, hoặc tăng lên nếu bạn muốn đánh dấu thay đổi
+// @version      1.9
 // @description  Tự động giải Vấn Đáp Tổng Môn trên Hoathinh3d
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/van-dap-tong-mon*
@@ -103,7 +103,7 @@
             <p><strong>Trạng thái:</strong> <span style="color: yellow;">${statusText}</span></p>
             <p><strong>Câu hỏi:</strong> <span style="color: lightblue;">${questionText}</span></p>
             <p><strong>Đáp án:</strong> <span style="color: lightgreen;">${answerText}</span></p>
-            <p><strong>Cách tìm:</strong> <em>${methodText}</em></p>
+            <p><strong>Độ chính xác:</strong> <em>${methodText}</em></p>
             <p><strong>Đã trả lời:</strong> ${currentAnsweredCount}/5</p>
         `;
     }

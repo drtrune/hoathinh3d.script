@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         HH3D Luận Võ Đường
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      2.0
-// @description  Tự động gia nhập trận đấu, bật auto-accept và rút ngắn thời gian chờ trong Luận Võ Đường.
+// @version      2.1
+// @description  Tự động gia nhập trận đấu, bật auto-accept, nhận thưởng và rút ngắn thời gian chờ trong Luận Võ Đường
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/luan-vo-duong*
 // @run-at       document-start
@@ -12,17 +12,17 @@
 (function() {
     'use strict';
 
-    // Log khởi đầu script - RẤT QUAN TRỌNG để biết script đã chạy
+    // Log khởi đầu script
     console.log('%c[HH3D LVD] Script đã tải.', 'background: #222; color: #bada55; padding: 2px 5px; border-radius: 3px;');
 
     // ===============================================
     // CẤU HÌNH BIẾN TOÀN CỤC & THỜI GIAN
     // ===============================================
 
-    // Cấu hình cho tính năng Auto Join/Accept
+    // Cấu hình cho tính năng Auto Join/Accept/Reward
     const TIMEOUT_ELEMENT_STABLE = 5000; // 5 giây: Thời gian tối đa chờ một phần tử xuất hiện ổn định
     const INTERVAL_ELEMENT_STABLE = 500;  // 0.5 giây: Khoảng thời gian giữa các lần kiểm tra phần tử
-    const DELAY_BEFORE_CLICK = 750;       // 0.75 giây: Độ trễ trước khi thực hiện click
+    const DELAY_BEFORE_CLICK = 500;       // 0.5 giây: Độ trễ trước khi thực hiện click
     const DELAY_AFTER_FUNCTION_CALL = 1500; // 1.5 giây: Độ trễ sau khi gọi hàm để UI kịp cập nhật
     const DELAY_BETWEEN_RETRIES_SHORT = 1000; // 1 giây: Độ trễ ngắn khi thử lại hành động
     const DELAY_BETWEEN_RETRIES_LONG = 3000; // 3 giây: Độ trễ dài hơn khi không tìm thấy phần tử/hàm chính
@@ -35,6 +35,8 @@
     let speedUpActive = true;
     // Biến để theo dõi trạng thái khởi tạo chính của luồng Auto Join/Accept
     let hasInitializedMainFlow = false;
+    // Biến mới: Theo dõi trạng thái đã nhận thưởng hoặc không có nút nhận thưởng
+    let isRewardClaimedOrHandled = false;
 
     // Lưu trữ các hàm setTimeout/setInterval gốc
     const originalSetTimeout = window.setTimeout;
@@ -48,21 +50,14 @@
         let startTime = Date.now();
         let intervalId;
 
-        // Chỉ log khi bắt đầu chờ
-        console.log(`%c[LVD - DEBUG] Chờ "%s"`, 'color: #00FFFF;', selector);
-
         intervalId = setInterval(() => {
             const foundElement = document.querySelector(selector);
             const elapsedTime = Date.now() - startTime;
 
             if (foundElement && foundElement.offsetParent !== null && !foundElement.disabled) {
-                // Log khi tìm thấy và ổn định
-                console.log(`%c[LVD - DEBUG] "%s" ĐÃ SẴN SÀNG.`, 'color: limegreen;', selector);
                 clearInterval(intervalId);
                 callback(foundElement);
             } else if (elapsedTime >= timeout) {
-                // Cảnh báo khi hết thời gian
-                console.warn(`%c[LVD - DEBUG] HẾT THỜI GIAN chờ "%s".`, 'color: orange;', selector);
                 clearInterval(intervalId);
                 callback(null);
             }
@@ -90,7 +85,6 @@
                 cancelable: true
             });
             element.dispatchEvent(mouseEvent);
-            // Chỉ log khi click thành công
             console.log(`%c[LVD - INFO] Đã click "%s".`, 'color: lightblue;', elementName);
             return true;
         } catch (e) {
@@ -187,6 +181,7 @@
     // HÀM XỬ LÝ CAN THIỆP THỜI GIAN
     // ===============================================
 
+    // Ghi đè setTimeout để can thiệp
     window.setTimeout = function(callback, delay, ...args) {
         let actualDelay = delay;
         let intervened = false;
@@ -208,6 +203,7 @@
         return originalSetTimeout(callback, actualDelay, ...args);
     };
 
+    // Ghi đè setInterval để can thiệp
     window.setInterval = function(callback, delay, ...args) {
         let actualDelay = delay;
         let intervened = false;
@@ -233,41 +229,105 @@
     // LOGIC CHÍNH CỦA TỰ ĐỘNG HÓA LUẬN VÕ
     // ===============================================
 
+    /**
+     * Hàm chính điều phối toàn bộ chu trình tự động hóa.
+     */
     function startLuanVoDuongAutomation() {
         if (hasInitializedMainFlow) {
-            // Không log khi hàm này được gọi lại (do DOMContentLoaded và readystate)
-            return;
+            return; // Đã khởi tạo, không chạy lại
         }
         hasInitializedMainFlow = true;
 
-        console.log(`%c[HH3D LVD] Bắt đầu tự động hóa.`, 'background: #333; color: #f0f0f0;');
-        
+        console.log(`%c[HH3D LVD] Bắt đầu chu trình tự động hóa chính.`, 'background: #333; color: #f0f0f0;');
+
+        // Bước 1: Luôn ưu tiên bật auto-accept
         tryToggleAutoAccept();
     }
 
+    /**
+     * Cố gắng bật chế độ auto-accept. Nếu không tìm thấy, chuyển sang bước Nhận Thưởng.
+     */
     function tryToggleAutoAccept() {
+        if (isRewardClaimedOrHandled) { // Nếu đã nhận thưởng, không cần làm gì nữa
+            console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý. Bỏ qua bật Auto Accept.`, 'color: #808080;');
+            return;
+        }
+
         console.log(`%c[LVD - AUTO] Đang tìm công tắc "auto_accept_toggle".`, 'color: #98FB98;');
         const autoAcceptToggleSelector = 'input[type="checkbox"]#auto_accept_toggle';
 
         waitForElementStable(autoAcceptToggleSelector, (toggleInput) => {
+            if (isRewardClaimedOrHandled) { // Kiểm tra lại sau khi chờ
+                console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý trong khi chờ Auto Accept.`, 'color: #808080;');
+                return;
+            }
+
             if (toggleInput) {
                 if (!toggleInput.checked) {
                     console.log(`%c[LVD - AUTO] "auto_accept_toggle" CHƯA BẬT. Đang click...`, 'color: lightgreen;');
                     setTimeout(() => {
                         safeClick(toggleInput, 'công tắc "auto_accept_toggle"');
                         console.log(`%c[LVD - AUTO] "auto_accept_toggle" ĐÃ BẬT.`, 'color: limegreen;');
+                        // Sau khi bật auto accept, chuyển sang kiểm tra nhận thưởng
+                        setTimeout(tryReceiveReward, DELAY_AFTER_FUNCTION_CALL);
                     }, DELAY_BEFORE_CLICK);
                 } else {
                     console.log(`%c[LVD - AUTO] "auto_accept_toggle" ĐÃ BẬT SẴN.`, 'color: limegreen;');
+                    // Nếu đã bật, chuyển sang kiểm tra nhận thưởng
+                    tryReceiveReward();
                 }
             } else {
-                console.log(`%c[LVD - AUTO] Không tìm thấy "auto_accept_toggle". Chuyển sang Gia Nhập.`, 'color: grey;');
-                initiateJoinBattle();
+                console.log(`%c[LVD - AUTO] Không tìm thấy "auto_accept_toggle". Chuyển sang kiểm tra Nhận Thưởng.`, 'color: grey;');
+                // Nếu không tìm thấy công tắc, có thể đã ở màn hình khác, thử nhận thưởng hoặc gia nhập
+                tryReceiveReward();
             }
         }, 3000, INTERVAL_ELEMENT_STABLE);
     }
 
+    /**
+     * Cố gắng tìm và click nút "Nhận Thưởng".
+     * Nếu tìm thấy và click thành công, thì đánh dấu `isRewardClaimedOrHandled = true` và dừng các chu trình khác.
+     * Nếu không tìm thấy, chuyển sang bước `initiateJoinBattle()`.
+     */
+    function tryReceiveReward() {
+        if (isRewardClaimedOrHandled) {
+            console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý. Bỏ qua tìm nút Nhận Thưởng.`, 'color: #808080;');
+            return;
+        }
+        console.log(`%c[LVD - AUTO] Đang tìm nút "Nhận Thưởng".`, 'color: #4CAF50;');
+        const receiveRewardBtnSelector = 'button#receive-reward-btn.pushable.front';
+
+        waitForElementStable(receiveRewardBtnSelector, (rewardButton) => {
+            if (rewardButton) {
+                console.log(`%c[LVD - AUTO] Đã tìm thấy nút "Nhận Thưởng". Đang click...`, 'color: limegreen;');
+                setTimeout(() => {
+                    if (safeClick(rewardButton, 'nút "Nhận Thưởng"')) {
+                        console.log(`%c[LVD - AUTO] Đã click "Nhận Thưởng". Kết thúc chu trình tự động hóa.`, 'color: limegreen; font-weight: bold;');
+                        isRewardClaimedOrHandled = true; // Đánh dấu đã nhận thưởng hoặc đã xử lý
+                        // Không gọi hàm nào nữa, script sẽ dừng ở đây.
+                        // Trang có thể tải lại sau khi nhận thưởng, và script sẽ bắt đầu lại.
+                    } else {
+                        console.warn(`%c[LVD - CẢNH BÁO] Click "Nhận Thưởng" thất bại. Thử lại sau %dms.`, 'color: orange;', DELAY_BETWEEN_RETRIES_SHORT);
+                        setTimeout(tryReceiveReward, DELAY_BETWEEN_RETRIES_SHORT); // Thử lại
+                    }
+                }, DELAY_BEFORE_CLICK);
+            } else {
+                console.log(`%c[LVD - AUTO] Không tìm thấy nút "Nhận Thưởng". Chuyển sang Gia Nhập trận đấu.`, 'color: grey;');
+                isRewardClaimedOrHandled = false; // Đảm bảo cờ này là false nếu không tìm thấy nút
+                initiateJoinBattle(); // Chuyển sang bước tiếp theo
+            }
+        }, 5000); // Chờ nút nhận thưởng tối đa 5 giây, nếu không có thì coi như đã xử lý
+    }
+
+
+    /**
+     * Cố gắng Gia Nhập trận đấu (ưu tiên gọi hàm trực tiếp, sau đó click ảnh).
+     */
     function initiateJoinBattle() {
+        if (isRewardClaimedOrHandled) {
+            console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý. Bỏ qua Gia Nhập trận đấu.`, 'color: #808080;');
+            return;
+        }
         console.log(`%c[LVD - AUTO] Đang cố gắng gia nhập trận đấu.`, 'color: #FFD700;');
 
         try {
@@ -285,7 +345,14 @@
         }
     }
 
+    /**
+     * Phương án dự phòng: Click vào ảnh "Gia Nhập" nếu không gọi được hàm.
+     */
     function clickJoinBattleImageFallback() {
+        if (isRewardClaimedOrHandled) {
+            console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý. Bỏ qua click ảnh Gia Nhập.`, 'color: #808080;');
+            return;
+        }
         console.log(`%c[LVD - AUTO] Đang tìm nút "Gia Nhập" (ảnh).`, 'color: #FFD700;');
         const joinBattleImgSelector = 'img#joinBattleImg.clickable-image[src="/wp-content/themes/halimmovies-child/assets/image/gif/vao-tham-chien.gif"]';
 
@@ -308,7 +375,14 @@
         });
     }
 
+    /**
+     * Xác nhận tham gia trận đấu.
+     */
     function confirmJoinBattle() {
+        if (isRewardClaimedOrHandled) {
+            console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý. Bỏ qua xác nhận trận đấu.`, 'color: #808080;');
+            return;
+        }
         console.log(`%c[LVD - AUTO] Đang tìm nút xác nhận "Tham gia".`, 'color: #FF69B4;');
         const confirmButtonSelector = 'button.swal2-confirm.swal2-styled.swal2-default-outline';
 
@@ -348,10 +422,12 @@
     }
 
     // Khởi tạo UI cho Speed Up
+    // Chờ DOMContentLoaded hoặc document sẵn sàng để đảm bảo các phần tử cần thiết cho UI có thể tìm thấy.
     console.log('%c[HH3D LVD] Đang khởi tạo UI Speed Up.', 'color: #8A2BE2;');
     window.addEventListener('DOMContentLoaded', () => {
         createToggleSwitchUI();
     });
+    // Fallback nếu DOMContentLoaded đã bắn trước khi script kịp gán listener
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
         createToggleSwitchUI();
     }

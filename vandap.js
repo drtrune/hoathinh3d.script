@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Vấn đáp
 // @namespace    http://tampermonkey.net/
-// @version      1.9
+// @version      1.9 // Giữ nguyên phiên bản, hoặc tăng lên nếu bạn muốn đánh dấu thay đổi
 // @description  Tự động giải Vấn Đáp Tổng Môn trên Hoathinh3d
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/van-dap-tong-mon*
@@ -142,24 +142,41 @@
 
         log(`Attempting to fetch new question data from: ${QUESTION_DATA_URL}`);
         try {
-            const response = await new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: "GET",
-                    url: QUESTION_DATA_URL,
-                    onload: function(res) {
-                        if (res.status === 200) {
-                            resolve(res.responseText);
-                        } else {
-                            reject(new Error(`Failed to fetch questions: ${res.status} ${res.statusText}`));
+            const responseText = await new Promise((resolve, reject) => {
+                // Ưu tiên sử dụng GM_xmlhttpRequest nếu script được chạy bởi Tampermonkey với quyền tương ứng
+                if (typeof GM_xmlhttpRequest !== 'undefined') {
+                    GM_xmlhttpRequest({
+                        method: "GET",
+                        url: QUESTION_DATA_URL,
+                        onload: function(res) {
+                            if (res.status === 200) {
+                                resolve(res.responseText);
+                            } else {
+                                reject(new Error(`Failed to fetch questions via GM_xmlhttpRequest: ${res.status} ${res.statusText}`));
+                            }
+                        },
+                        onerror: function(err) {
+                            reject(new Error('GM_xmlhttpRequest network error or CORS issue: ' + err.statusText));
                         }
-                    },
-                    onerror: function(err) {
-                        reject(new Error('Network error or CORS issue: ' + err.statusText));
-                    }
-                });
+                    });
+                } else {
+                    // Fallback sang fetch API tiêu chuẩn nếu không có GM_xmlhttpRequest (khi script bị inject)
+                    fetch(QUESTION_DATA_URL)
+                        .then(res => {
+                            if (res.ok) {
+                                return res.text();
+                            } else {
+                                throw new Error(`Failed to fetch questions via standard fetch: ${res.status} ${res.statusText}`);
+                            }
+                        })
+                        .then(resolve)
+                        .catch(err => {
+                            reject(new Error('Standard fetch network error or CORS issue: ' + err.message));
+                        });
+                }
             });
 
-            const data = JSON.parse(response);
+            const data = JSON.parse(responseText); // Sử dụng responseText đã nhận được
 
             if (!data || typeof data !== 'object' || !data.questions || typeof data.questions !== 'object') {
                 log('Fetched data is not in the expected { "questions": { ... } } format.', 'error');
@@ -297,8 +314,8 @@
 
                 // Dừng interval hiện tại để kiểm soát chính xác thời gian chờ 1 giây
                 if (questionProcessingIntervalId) {
-                     clearInterval(questionProcessingIntervalId);
-                     questionProcessingIntervalId = null;
+                    clearInterval(questionProcessingIntervalId);
+                    questionProcessingIntervalId = null;
                 }
                 setTimeout(() => {
                     isWaitingForNextQuestion = false; // Bỏ cờ chờ
@@ -425,26 +442,26 @@
 
             // Nếu không tìm thấy đáp án và muốn click ngẫu nhiên để tiếp tục
             // if (optionElements.length > 0) {
-            //     const randomIndex = Math.floor(Math.random() * optionElements.length);
-            //     log(`Clicking random answer as no match found: ${optionElements[randomIndex].textContent.trim()}`);
-            //     optionElements[randomIndex].click();
-            //     lastQuestionText = currentQuestionText; // Cập nhật để kích hoạt chờ câu hỏi mới
-            //     updateAnswerOverlay(currentQuestionText, optionElements[randomIndex].textContent.trim(), 'Trả lời ngẫu nhiên', 'Ngẫu nhiên');
-            //     if (questionProcessingIntervalId) {
-            //         clearInterval(questionProcessingIntervalId);
-            //         questionProcessingIntervalId = null;
-            //     }
-            //     setTimeout(() => {
-            //         log('Short delay after random answer click. Resuming question processing logic.');
-            //         startQuestionProcessing();
-            //     }, DELAY_AFTER_ANSWER_CLICK_SUCCESS);
+            //      const randomIndex = Math.floor(Math.random() * optionElements.length);
+            //      log(`Clicking random answer as no match found: ${optionElements[randomIndex].textContent.trim()}`);
+            //      optionElements[randomIndex].click();
+            //      lastQuestionText = currentQuestionText; // Cập nhật để kích hoạt chờ câu hỏi mới
+            //      updateAnswerOverlay(currentQuestionText, optionElements[randomIndex].textContent.trim(), 'Trả lời ngẫu nhiên', 'Ngẫu nhiên');
+            //      if (questionProcessingIntervalId) {
+            //          clearInterval(questionProcessingIntervalId);
+            //          questionProcessingIntervalId = null;
+            //      }
+            //      setTimeout(() => {
+            //          log('Short delay after random answer click. Resuming question processing logic.');
+            //          startQuestionProcessing();
+            //      }, DELAY_AFTER_ANSWER_CLICK_SUCCESS);
             // } else {
-            //     log('No answer found and no options to click randomly. Stopping script.', 'error');
-            //     updateAnswerOverlay('Lỗi!', 'Không tìm thấy đáp án và lựa chọn', 'Dừng Script!', '');
-            //     if (questionProcessingIntervalId) {
-            //         clearInterval(questionProcessingIntervalId);
-            //         questionProcessingIntervalId = null;
-            //     }
+            //      log('No answer found and no options to click randomly. Stopping script.', 'error');
+            //      updateAnswerOverlay('Lỗi!', 'Không tìm thấy đáp án và lựa chọn', 'Dừng Script!', '');
+            //      if (questionProcessingIntervalId) {
+            //          clearInterval(questionProcessingIntervalId);
+            //          questionProcessingIntervalId = null;
+            //      }
             // }
         }
     }

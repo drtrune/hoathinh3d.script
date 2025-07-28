@@ -1,35 +1,106 @@
 // ==UserScript==
-// @name         HH3D Luận Võ
-// @namespace    http://tampermonkey.net/
-// @version      1.7
-// @description  Rút ngắn thời gian chờ trong Luận Võ
+// @name         HH3D Luận Võ Đường
+// @namespace    https://github.com/drtrune/hoathinh3d.script
+// @version      2.0
+// @description  Tự động gia nhập trận đấu, bật auto-accept và rút ngắn thời gian chờ trong Luận Võ Đường.
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/luan-vo-duong*
+// @run-at       document-start
 // @grant        none
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    console.log('[Luận Võ Speed Up] Script đã được tải.');
+    // Log khởi đầu script - RẤT QUAN TRỌNG để biết script đã chạy
+    console.log('%c[HH3D LVD] Script đã tải.', 'background: #222; color: #bada55; padding: 2px 5px; border-radius: 3px;');
 
     // ===============================================
-    // CẤU HÌNH & BIẾN TOÀN CỤC
+    // CẤU HÌNH BIẾN TOÀN CỤC & THỜI GIAN
     // ===============================================
 
+    // Cấu hình cho tính năng Auto Join/Accept
+    const TIMEOUT_ELEMENT_STABLE = 5000; // 5 giây: Thời gian tối đa chờ một phần tử xuất hiện ổn định
+    const INTERVAL_ELEMENT_STABLE = 500;  // 0.5 giây: Khoảng thời gian giữa các lần kiểm tra phần tử
+    const DELAY_BEFORE_CLICK = 750;       // 0.75 giây: Độ trễ trước khi thực hiện click
+    const DELAY_AFTER_FUNCTION_CALL = 1500; // 1.5 giây: Độ trễ sau khi gọi hàm để UI kịp cập nhật
+    const DELAY_BETWEEN_RETRIES_SHORT = 1000; // 1 giây: Độ trễ ngắn khi thử lại hành động
+    const DELAY_BETWEEN_RETRIES_LONG = 3000; // 3 giây: Độ trễ dài hơn khi không tìm thấy phần tử/hàm chính
+
+    // Cấu hình cho tính năng Speed Up
     const SHORTENED_DELAY_SETTIMEOUT = 100; // 100ms (0.1 giây) cho setTimeout
-    const SHORTENED_INTERVAL_DELAY = 10;   // 10ms (0.01 giây) cho setInterval
+    const SHORTENED_INTERVAL_DELAY = 10;    // 10ms (0.01 giây) cho setInterval
 
-    // Trạng thái chung của tính năng speed up
-    // Mặc định là TRUE (đã bật)
+    // Trạng thái chung của tính năng speed up (mặc định BẬT)
     let speedUpActive = true;
+    // Biến để theo dõi trạng thái khởi tạo chính của luồng Auto Join/Accept
+    let hasInitializedMainFlow = false;
 
     // Lưu trữ các hàm setTimeout/setInterval gốc
     const originalSetTimeout = window.setTimeout;
     const originalSetInterval = window.setInterval;
 
     // ===============================================
-    // HÀM TIỆN ÍCH UI (CHO NÚT GẠT)
+    // HÀM TIỆN ÍCH CHUNG
+    // ===============================================
+
+    function waitForElementStable(selector, callback, timeout = TIMEOUT_ELEMENT_STABLE, interval = INTERVAL_ELEMENT_STABLE) {
+        let startTime = Date.now();
+        let intervalId;
+
+        // Chỉ log khi bắt đầu chờ
+        console.log(`%c[LVD - DEBUG] Chờ "%s"`, 'color: #00FFFF;', selector);
+
+        intervalId = setInterval(() => {
+            const foundElement = document.querySelector(selector);
+            const elapsedTime = Date.now() - startTime;
+
+            if (foundElement && foundElement.offsetParent !== null && !foundElement.disabled) {
+                // Log khi tìm thấy và ổn định
+                console.log(`%c[LVD - DEBUG] "%s" ĐÃ SẴN SÀNG.`, 'color: limegreen;', selector);
+                clearInterval(intervalId);
+                callback(foundElement);
+            } else if (elapsedTime >= timeout) {
+                // Cảnh báo khi hết thời gian
+                console.warn(`%c[LVD - DEBUG] HẾT THỜI GIAN chờ "%s".`, 'color: orange;', selector);
+                clearInterval(intervalId);
+                callback(null);
+            }
+        }, interval);
+    }
+
+    function safeClick(element, elementName = 'phần tử') {
+        if (!element) {
+            console.error(`%c[LVD - LỖI] "${elementName}" là NULL hoặc UNDEFINED.`, 'color: red;');
+            return false;
+        }
+        if (element.disabled) {
+            console.warn(`%c[LVD - CẢNH BÁO] "${elementName}" bị DISABLED.`, 'color: orange;');
+            return false;
+        }
+        if (element.offsetParent === null) {
+            console.warn(`%c[LVD - CẢNH BÁO] "${elementName}" không hiển thị.`, 'color: orange;');
+            return false;
+        }
+
+        try {
+            const mouseEvent = new MouseEvent('click', {
+                view: window,
+                bubbles: true,
+                cancelable: true
+            });
+            element.dispatchEvent(mouseEvent);
+            // Chỉ log khi click thành công
+            console.log(`%c[LVD - INFO] Đã click "%s".`, 'color: lightblue;', elementName);
+            return true;
+        } catch (e) {
+            console.error(`%c[LVD - LỖI] KHÔNG THỂ CLICK "%s": %o`, 'color: red;', elementName, e);
+            return false;
+        }
+    }
+
+    // ===============================================
+    // HÀM TIỆN ÍCH UI (CHO NÚT GẠT SPEED UP)
     // ===============================================
 
     function addStyle(css) {
@@ -46,198 +117,251 @@
                 margin-top: 10px;
                 display: flex;
                 align-items: center;
-                justify-content: center; /* Căn giữa */
+                justify-content: center;
                 gap: 10px;
                 color: #bbb;
                 font-size: 14px;
                 user-select: none;
-                width: 100%; /* Để justify-content hoạt động tốt */
+                width: 100%;
             }
-
-            /* CSS cho nút gạt (toggle switch) */
-            .switch {
-                position: relative;
-                display: inline-block;
-                width: 44px; /* Rộng hơn */
-                height: 24px; /* Cao hơn */
-            }
-
-            /* Ẩn checkbox gốc */
-            .switch input {
-                opacity: 0;
-                width: 0;
-                height: 0;
-            }
-
-            /* Thanh trượt */
+            .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+            .switch input { opacity: 0; width: 0; height: 0; }
             .slider {
-                position: absolute;
-                cursor: pointer;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background-color: #ccc;
-                -webkit-transition: .4s;
-                transition: .4s;
-                border-radius: 24px; /* Hình tròn cho thanh trượt */
+                position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+                background-color: #ccc; -webkit-transition: .4s; transition: .4s; border-radius: 24px;
             }
-
             .slider:before {
-                position: absolute;
-                content: "";
-                height: 16px; /* Kích thước nút gạt */
-                width: 16px;
-                left: 4px; /* Vị trí ban đầu của nút */
-                bottom: 4px;
-                background-color: white;
-                -webkit-transition: .4s;
-                transition: .4s;
-                border-radius: 50%; /* Hình tròn cho nút gạt */
+                position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px;
+                background-color: white; -webkit-transition: .4s; transition: .4s; border-radius: 50%;
             }
-
-            /* Khi checkbox được chọn */
-            input:checked + .slider {
-                background-color: #4CAF50; /* Màu xanh lá cây khi bật */
-            }
-
-            /* Bóng khi focus (nếu cần) */
-            input:focus + .slider {
-                box-shadow: 0 0 1px #4CAF50;
-            }
-
-            /* Di chuyển nút gạt khi được chọn */
+            input:checked + .slider { background-color: #4CAF50; }
+            input:focus + .slider { box-shadow: 0 0 1px #4CAF50; }
             input:checked + .slider:before {
-                -webkit-transform: translateX(20px); /* Di chuyển nút sang phải */
-                -ms-transform: translateX(20px);
-                transform: translateX(20px);
+                -webkit-transform: translateX(20px); -ms-transform: translateX(20px); transform: translateX(20px);
             }
-
-            /* Hình tròn cho thanh trượt và nút */
-            .slider.round {
-                border-radius: 24px;
-            }
-
-            .slider.round:before {
-                border-radius: 50%;
-            }
+            .slider.round { border-radius: 24px; }
+            .slider.round:before { border-radius: 50%; }
         `);
 
-        // Chờ cho element có class 'auto-accept-label' xuất hiện
-        const targetElement = document.querySelector('.auto-accept-label');
+        const targetElementSelector = '.auto-accept-label';
+        waitForElementStable(targetElementSelector, (targetElement) => {
+            if (targetElement) {
+                const container = document.createElement('div');
+                container.className = 'speed-up-toggle-container';
 
-        if (targetElement) {
-            const container = document.createElement('div');
-            container.className = 'speed-up-toggle-container';
+                const labelText = document.createElement('label');
+                labelText.textContent = 'Khiêu chiến nhanh';
+                labelText.htmlFor = 'speedUpToggleSwitch';
 
-            const labelText = document.createElement('label');
-            labelText.textContent = 'Khiêu chiến nhanh';
-            labelText.htmlFor = 'speedUpToggleSwitch'; // Liên kết với input
+                const switchWrapper = document.createElement('label');
+                switchWrapper.className = 'switch';
 
-            const switchWrapper = document.createElement('label');
-            switchWrapper.className = 'switch';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = 'speedUpToggleSwitch';
+                checkbox.checked = speedUpActive;
+                checkbox.addEventListener('change', (e) => {
+                    speedUpActive = e.target.checked;
+                    console.log(`%c[LVD - INFO] Chế độ "Khiêu chiến nhanh": ${speedUpActive ? 'Đã BẬT' : 'Đã TẮT'}.`,
+                                'color: #8A2BE2;');
+                });
 
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.id = 'speedUpToggleSwitch';
-            checkbox.checked = speedUpActive; // Mặc định bật
-            checkbox.addEventListener('change', (e) => {
-                speedUpActive = e.target.checked;
-                console.log(`[Luận Võ Speed Up] Chế độ "Khiêu chiến nhanh": ${speedUpActive ? 'Đã BẬT' : 'Đã TẮT'}`);
-            });
+                const slider = document.createElement('span');
+                slider.className = 'slider round';
 
-            const slider = document.createElement('span');
-            slider.className = 'slider round';
+                switchWrapper.appendChild(checkbox);
+                switchWrapper.appendChild(slider);
 
-            switchWrapper.appendChild(checkbox);
-            switchWrapper.appendChild(slider);
+                container.appendChild(labelText);
+                container.appendChild(switchWrapper);
 
-            container.appendChild(labelText);
-            container.appendChild(switchWrapper);
-
-            // Chèn container ngay sau targetElement
-            targetElement.parentNode.insertBefore(container, targetElement.nextSibling);
-
-            console.log('[Luận Võ Speed Up] Nút gạt đã được chèn vào DOM.');
-
-        } else {
-            console.warn('[Luận Võ Speed Up] Không tìm thấy phần tử .auto-accept-label để chèn nút gạt.');
-        }
+                targetElement.parentNode.insertBefore(container, targetElement.nextSibling);
+                console.log('%c[LVD - INFO] Đã chèn nút gạt "Khiêu chiến nhanh".', 'color: lightgreen;');
+            } else {
+                console.warn('%c[LVD - CẢNH BÁO] Không tìm thấy ".auto-accept-label" để chèn nút gạt.', 'color: orange;');
+            }
+        }, 10000); // Chờ 10 giây cho element .auto-accept-label
     }
 
     // ===============================================
-    // HÀM XỬ LÝ CAN THIỆP
+    // HÀM XỬ LÝ CAN THIỆP THỜI GIAN
     // ===============================================
 
-    // Ghi đè setTimeout để can thiệp
     window.setTimeout = function(callback, delay, ...args) {
         let actualDelay = delay;
         let intervened = false;
-        let reason = '';
 
-        // SweetAlert2 setTimeout (3000ms) - Tự động đóng hộp thoại
-        // Chỉ can thiệp nếu speedUpActive đang TRUE
-        // Callback: ()=>{o("timer"),delete e.timeout}
         if (speedUpActive && delay === 3000 && typeof callback === 'function') {
             const callbackString = callback.toString();
             if (callbackString.includes('o("timer")') && callbackString.includes('delete e.timeout')) {
                 const stack = new Error().stack;
-                if (stack && stack.includes('sweetalert2.min.js')) { // Xác nhận nguồn gốc
+                if (stack && stack.includes('sweetalert2.min.js')) {
                     actualDelay = SHORTENED_DELAY_SETTIMEOUT;
                     intervened = true;
-                    reason = 'SweetAlert2 tự đóng';
                 }
             }
         }
 
         if (intervened) {
-            console.log(`[Luận Võ Speed Up] Đã can thiệp: Rút ngắn ${reason} từ ${delay}ms xuống ${actualDelay}ms.`);
+            console.log(`%c[LVD - SPEED UP] Rút ngắn delay từ ${delay}ms xuống ${actualDelay}ms.`, 'color: #FFA500;');
         }
         return originalSetTimeout(callback, actualDelay, ...args);
     };
 
-    // Ghi đè setInterval để can thiệp
     window.setInterval = function(callback, delay, ...args) {
         let actualDelay = delay;
         let intervened = false;
-        let reason = '';
 
-        // Can thiệp vào setInterval 1s của Hoạt ảnh chiến đấu (5s đếm ngược)
-        // Chỉ can thiệp nếu speedUpActive đang TRUE
-        // Callback: function(){--y>0?u.textContent=y:(clearInterval(window.countdownInterval),window.countdownInterval=null,t())}
         if (speedUpActive && delay === 1000 && typeof callback === 'function') {
             const callbackString = callback.toString();
             if (callbackString.includes('--y>0?') && callbackString.includes('clearInterval(window.countdownInterval)') && callbackString.includes('t()')) {
                  const stack = new Error().stack;
-                 if (stack && stack.includes('luan-vo.min.js')) { // Xác nhận nguồn gốc
-                    actualDelay = SHORTENED_INTERVAL_DELAY; // Rút ngắn delay giữa các lần chạy
+                 if (stack && stack.includes('luan-vo.min.js')) {
+                    actualDelay = SHORTENED_INTERVAL_DELAY;
                     intervened = true;
-                    reason = 'Hoạt ảnh chiến đấu (5s)';
                  }
             }
         }
 
         if (intervened) {
-            console.log(`[Luận Võ Speed Up] Đã can thiệp: Tăng tốc ${reason} từ ${delay}ms xuống ${actualDelay}ms.`);
+            console.log(`%c[LVD - SPEED UP] Tăng tốc interval từ ${delay}ms xuống ${actualDelay}ms.`, 'color: #FFA500;');
         }
-        // Trả về setInterval gốc với delay đã điều chỉnh (hoặc delay ban đầu nếu không can thiệp)
         return originalSetInterval(callback, actualDelay, ...args);
     };
+
+    // ===============================================
+    // LOGIC CHÍNH CỦA TỰ ĐỘNG HÓA LUẬN VÕ
+    // ===============================================
+
+    function startLuanVoDuongAutomation() {
+        if (hasInitializedMainFlow) {
+            // Không log khi hàm này được gọi lại (do DOMContentLoaded và readystate)
+            return;
+        }
+        hasInitializedMainFlow = true;
+
+        console.log(`%c[HH3D LVD] Bắt đầu tự động hóa.`, 'background: #333; color: #f0f0f0;');
+        
+        tryToggleAutoAccept();
+    }
+
+    function tryToggleAutoAccept() {
+        console.log(`%c[LVD - AUTO] Đang tìm công tắc "auto_accept_toggle".`, 'color: #98FB98;');
+        const autoAcceptToggleSelector = 'input[type="checkbox"]#auto_accept_toggle';
+
+        waitForElementStable(autoAcceptToggleSelector, (toggleInput) => {
+            if (toggleInput) {
+                if (!toggleInput.checked) {
+                    console.log(`%c[LVD - AUTO] "auto_accept_toggle" CHƯA BẬT. Đang click...`, 'color: lightgreen;');
+                    setTimeout(() => {
+                        safeClick(toggleInput, 'công tắc "auto_accept_toggle"');
+                        console.log(`%c[LVD - AUTO] "auto_accept_toggle" ĐÃ BẬT.`, 'color: limegreen;');
+                    }, DELAY_BEFORE_CLICK);
+                } else {
+                    console.log(`%c[LVD - AUTO] "auto_accept_toggle" ĐÃ BẬT SẴN.`, 'color: limegreen;');
+                }
+            } else {
+                console.log(`%c[LVD - AUTO] Không tìm thấy "auto_accept_toggle". Chuyển sang Gia Nhập.`, 'color: grey;');
+                initiateJoinBattle();
+            }
+        }, 3000, INTERVAL_ELEMENT_STABLE);
+    }
+
+    function initiateJoinBattle() {
+        console.log(`%c[LVD - AUTO] Đang cố gắng gia nhập trận đấu.`, 'color: #FFD700;');
+
+        try {
+            if (typeof window.joinBattleFunction === 'function') {
+                window.joinBattleFunction();
+                console.log(`%c[LVD - AUTO] Đã gọi hàm joinBattleFunction().`, 'color: lightgreen;');
+                setTimeout(confirmJoinBattle, DELAY_AFTER_FUNCTION_CALL);
+            } else {
+                console.log(`%c[LVD - AUTO] Không tìm thấy joinBattleFunction(). Fallback click ảnh.`, 'color: orange;');
+                clickJoinBattleImageFallback();
+            }
+        } catch (error) {
+            console.error(`%c[LVD - LỖI] Lỗi khi gọi joinBattleFunction(): %o. Fallback click ảnh.`, 'color: red;', error);
+            clickJoinBattleImageFallback();
+        }
+    }
+
+    function clickJoinBattleImageFallback() {
+        console.log(`%c[LVD - AUTO] Đang tìm nút "Gia Nhập" (ảnh).`, 'color: #FFD700;');
+        const joinBattleImgSelector = 'img#joinBattleImg.clickable-image[src="/wp-content/themes/halimmovies-child/assets/image/gif/vao-tham-chien.gif"]';
+
+        waitForElementStable(joinBattleImgSelector, (joinButton) => {
+            if (joinButton) {
+                console.log(`%c[LVD - AUTO] Đã tìm thấy nút "Gia Nhập". Đang click...`, 'color: lightgreen;');
+                setTimeout(() => {
+                    if (safeClick(joinButton, 'nút "Gia Nhập"')) {
+                        console.log(`%c[LVD - AUTO] Đã click "Gia Nhập".`, 'color: limegreen;');
+                        confirmJoinBattle();
+                    } else {
+                        console.warn(`%c[LVD - AUTO] Click "Gia Nhập" thất bại. Thử lại sau.`, 'color: orange;');
+                        setTimeout(initiateJoinBattle, DELAY_BETWEEN_RETRIES_SHORT);
+                    }
+                }, DELAY_BEFORE_CLICK);
+            } else {
+                console.log(`%c[LVD - AUTO] Không tìm thấy nút "Gia Nhập". Thử lại sau.`, 'color: grey;');
+                setTimeout(initiateJoinBattle, DELAY_BETWEEN_RETRIES_LONG);
+            }
+        });
+    }
+
+    function confirmJoinBattle() {
+        console.log(`%c[LVD - AUTO] Đang tìm nút xác nhận "Tham gia".`, 'color: #FF69B4;');
+        const confirmButtonSelector = 'button.swal2-confirm.swal2-styled.swal2-default-outline';
+
+        waitForElementStable(confirmButtonSelector, (confirmButton) => {
+            if (confirmButton) {
+                console.log(`%c[LVD - AUTO] Đã tìm thấy nút xác nhận "Tham gia". Đang click...`, 'color: lightgreen;');
+                setTimeout(() => {
+                    if (safeClick(confirmButton, 'nút "Tham gia" (xác nhận)')) {
+                        console.log(`%c[LVD - AUTO] Đã click "Tham gia". Chờ trang tải lại.`, 'color: limegreen;');
+                    } else {
+                        console.warn(`%c[LVD - AUTO] Click "Tham gia" thất bại. Thử lại sau.`, 'color: orange;');
+                        setTimeout(confirmJoinBattle, DELAY_BETWEEN_RETRIES_SHORT);
+                    }
+                }, DELAY_BEFORE_CLICK);
+            } else {
+                console.warn(`%c[LVD - CẢNH BÁO] Không tìm thấy nút xác nhận "Tham gia". Chờ trang tải lại.`, 'color: grey;');
+            }
+        });
+    }
 
     // ===============================================
     // KHỞI TẠO SCRIPT
     // ===============================================
 
-    function initializeSpeedUpScript() {
-        // Đảm bảo DOM đã tải hoàn toàn để tìm thấy .auto-accept-label
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', createToggleSwitchUI);
-        } else {
-            createToggleSwitchUI();
-        }
+    // Log trạng thái khởi tạo
+    console.log('%c[HH3D LVD] Kiểm tra trạng thái document để khởi động logic chính.', 'color: #DA70D6;');
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        console.log(`%c[HH3D LVD] Document sẵn sàng (${document.readyState}). Khởi động tự động hóa.`, 'color: #DA70D6; font-weight: bold;');
+        startLuanVoDuongAutomation();
+    } else {
+        console.log(`%c[HH3D LVD] Document chưa sẵn sàng (${document.readyState}). Chờ DOMContentLoaded.`, 'color: #DA70D6;');
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log(`%c[HH3D LVD] DOMContentLoaded kích hoạt. Khởi động tự động hóa.`, 'color: #DA70D6; font-weight: bold;');
+            startLuanVoDuongAutomation();
+        });
     }
 
-    // Luôn khởi tạo chức năng tạo UI và can thiệp
-    initializeSpeedUpScript();
+    // Khởi tạo UI cho Speed Up
+    console.log('%c[HH3D LVD] Đang khởi tạo UI Speed Up.', 'color: #8A2BE2;');
+    window.addEventListener('DOMContentLoaded', () => {
+        createToggleSwitchUI();
+    });
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        createToggleSwitchUI();
+    }
+
+    // MutationObserver (giữ nguyên nhưng không log chi tiết)
+    const observer = new MutationObserver((mutationsList, observer) => {
+        // Có thể bỏ comment dòng dưới nếu cần debug lại các thay đổi DOM
+        // console.log('[LVD - DEBUG] DOM Mutation detected.', mutationsList);
+    });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    console.log('%c[HH3D LVD] Thiết lập ban đầu hoàn tất.', 'color: #8A2BE2;');
 
 })();

@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         HoatHinh3D Khoang Mach
+// @name         HH3D Khoang Mach
 // @namespace    https://github.com/drtrune/hoathinh3d.script/
 // @version      3.1
 // @description  Tự động hóa quá trình khai thác khoáng mạch: chọn mỏ cụ thể, điều hướng, vào mỏ, xem chi tiết, kiểm tra và nhận thưởng theo điều kiện.

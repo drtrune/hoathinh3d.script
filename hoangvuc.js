@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Hoang vực
 // @namespace    http://tampermonkey.net/
-// @version      4.5
+// @version      4.6
 // @description  Tự động nhận thưởng. Tự động tối ưu ngũ hành và chiến đấu theo chu kỳ.
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/hoang-vuc*
@@ -16,7 +16,7 @@
     // ===============================================
 
     // Thời gian tối đa chờ một phần tử xuất hiện ổn định (ms)
-    const TIMEOUT_ELEMENT_STABLE = 10000; // 10 giây
+    const TIMEOUT_ELEMENT_STABLE = 2000; // 2 giây
     // Khoảng thời gian giữa các lần kiểm tra phần tử ổn định (ms)
     const INTERVAL_ELEMENT_STABLE = 500; // 0.5 giây
 

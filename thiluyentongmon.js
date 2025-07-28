@@ -278,12 +278,62 @@
                 color: #ADD8E6;
                 white-space: nowrap;
             }
-            #hh3dThiLuyenConfig #autoClickToggleSwitch {
-                width: 20px;
-                height: 20px;
-                cursor: pointer;
-                vertical-align: middle;
+            /* Styles for the toggle switch */
+            .switch {
+                position: relative;
+                display: inline-block;
+                width: 38px; /* Adjusted width */
+                height: 22px; /* Adjusted height */
             }
+
+            /* Hide default HTML checkbox */
+            .switch input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+
+            /* The slider */
+            .slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: #ccc;
+                -webkit-transition: .4s;
+                transition: .4s;
+                border-radius: 22px; /* Makes it round */
+            }
+
+            .slider:before {
+                position: absolute;
+                content: "";
+                height: 16px; /* Adjusted height */
+                width: 16px; /* Adjusted width */
+                left: 3px; /* Adjusted position */
+                bottom: 3px; /* Adjusted position */
+                background-color: white;
+                -webkit-transition: .4s;
+                transition: .4s;
+                border-radius: 50%; /* Makes the circle */
+            }
+
+            input:checked + .slider {
+                background-color: #4CAF50; /* Green when checked */
+            }
+
+            input:focus + .slider {
+                box-shadow: 0 0 1px #4CAF50;
+            }
+
+            input:checked + .slider:before {
+                -webkit-transform: translateX(16px); /* Adjusted translation */
+                -ms-transform: translateX(16px); /* Adjusted translation */
+                transform: translateX(16px); /* Adjusted translation */
+            }
+
             #hh3dThiLuyenConfig #scriptStatus {
                 font-size: 11px;
                 color: #B0C4DE;
@@ -303,8 +353,11 @@
                 configDiv.id = 'hh3dThiLuyenConfig';
                 configDiv.innerHTML = `
                     <div class="config-row">
-                        <label for="autoClickToggleSwitch">Tự động click rương:</label>
-                        <input type="checkbox" id="autoClickToggleSwitch">
+                        <label>Tự động thí luyện</label>
+                        <label class="switch">
+                            <input type="checkbox" id="autoClickToggleSwitch">
+                            <span class="slider"></span>
+                        </label>
                     </div>
                     <span id="scriptStatus">Trạng thái: Đang khởi tạo...</span>
                 `;

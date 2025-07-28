@@ -28,8 +28,8 @@
     const DELAY_BETWEEN_RETRIES_LONG = 3000; // 3 giây: Độ trễ dài hơn khi không tìm thấy phần tử/hàm chính
 
     // Cấu hình cho tính năng Speed Up
-    const SHORTENED_DELAY_SETTIMEOUT = 100; // 100ms (0.1 giây) cho setTimeout
-    const SHORTENED_INTERVAL_DELAY = 10;    // 10ms (0.01 giây) cho setInterval
+    const SHORTENED_DELAY_SETTIMEOUT = 200; // 200ms cho setTimeout
+    const SHORTENED_INTERVAL_DELAY = 200;    // 200ms cho setInterval
 
     // Trạng thái chung của tính năng speed up (mặc định BẬT)
     let speedUpActive = true;

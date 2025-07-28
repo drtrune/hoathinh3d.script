@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         HoatHinh3D Auto Khoang Mach (Optimized v3.0)
-// @namespace    http://tampermonkey.net/
-// @version      3.0
-// @description  Tự động hóa quá trình khai thác khoáng mạch: chọn mỏ cụ thể, điều hướng, vào mỏ, xem chi tiết, kiểm tra và nhận thưởng theo điều kiện. Hỗ trợ tự động chạy khi tải trang và xử lý hộp thoại xác nhận.
-// @author       Bạn
+// @name         HoatHinh3D Khoang Mach
+// @namespace    https://github.com/drtrune/hoathinh3d.script/
+// @version      3.1
+// @description  Tự động hóa quá trình khai thác khoáng mạch: chọn mỏ cụ thể, điều hướng, vào mỏ, xem chi tiết, kiểm tra và nhận thưởng theo điều kiện.
+// @author       Dr. Trune
 // @match        https://hoathinh3d.gg/khoang-mach*
 // @grant        none
 // ==/UserScript==
@@ -26,7 +26,8 @@
         TIMEOUT_RETRY_NO_DATA: 10 * 1000, // 10 giây nếu không đọc được data
         TIMEOUT_RETRY_NO_ROW: 5 * 1000, // 5 giây nếu không tìm thấy hàng người chơi
         TIMEOUT_CLICK_DELAY: 500, // Độ trễ trước khi click
-        TIMEOUT_PAGE_NAV_WAIT: 2000 // 2 giây chờ sau khi chuyển trang/vào mỏ
+        TIMEOUT_PAGE_NAV_WAIT: 2000, // 2 giây chờ sau khi chuyển trang/vào mỏ
+        REFRESH_INTERVAL: 2 * 60 * 1000 // 2 phút refresh trang 1 lần
     };
 
     let selectedMineId = localStorage.getItem(CONFIG.LOCAL_STORAGE_PREFIX + 'id') || CONFIG.DEFAULT_MINE_ID;
@@ -35,6 +36,7 @@
 
     let isAutoRunning = false;
     let currentTimerId = null;
+    let refreshTimerId = null; // Thêm timer cho chức năng refresh
     let isUIMade = false;
     let uiObserver = null;
     let currentPlayerId = null; // Sẽ được lấy khi cần thiết
@@ -161,6 +163,18 @@
         console.log(`[Auto Khoáng Mạch] Next cycle scheduled in ${delayMs / 1000} seconds.`);
     }
 
+    /**
+     * Đặt hẹn giờ cho việc refresh trang.
+     */
+    function setRefreshTimer() {
+        if (refreshTimerId) clearTimeout(refreshTimerId);
+        refreshTimerId = setTimeout(() => {
+            console.log('[Auto Khoáng Mạch] Performing page refresh.');
+            window.location.reload();
+        }, CONFIG.REFRESH_INTERVAL);
+        console.log(`[Auto Khoáng Mạch] Page refresh scheduled in ${CONFIG.REFRESH_INTERVAL / (60 * 1000)} minutes.`);
+    }
+
     // --- HÀM XỬ LÝ LOGIC CHÍNH ---
 
     /**
@@ -170,17 +184,23 @@
         const khaiThacSpan = userRowElement.querySelector('span.khai-thac');
         if (khaiThacSpan) {
             const text = khaiThacSpan.textContent.trim();
-            if (text === 'Đạt tối đa') return 0;
+            console.log(`[Auto Khoáng Mạch] Raw mining time text: "${text}"`);
+            if (text === 'Đạt tối đa') {
+                console.log('[Auto Khoáng Mạch] Mining time: Đạt tối đa (0ms remaining).');
+                return 0;
+            }
 
             const match = text.match(/(\d+)h\s*(\d+)m\s*(\d+)s/);
             if (match) {
                 const hours = parseInt(match[1]) || 0;
                 const minutes = parseInt(match[2]) || 0;
                 const seconds = parseInt(match[3]) || 0;
-                return (hours * 3600 + minutes * 60 + seconds) * 1000;
+                const totalMs = (hours * 3600 + minutes * 60 + seconds) * 1000;
+                console.log(`[Auto Khoáng Mạch] Parsed mining time: ${hours}h ${minutes}m ${seconds}s (${totalMs}ms).`);
+                return totalMs;
             }
         }
-        console.warn('[Auto Khoáng Mạch] Failed to read mining time.');
+        console.warn('[Auto Khoáng Mạch] Failed to read mining time or format unrecognized. Returning -1.');
         return -1;
     }
 
@@ -191,10 +211,15 @@
         const tuviBonusSpan = document.querySelector('span#tuvi-bonus-percentage');
         if (tuviBonusSpan) {
             const text = tuviBonusSpan.textContent.trim();
+            console.log(`[Auto Khoáng Mạch] Raw Tu Vi bonus text: "${text}"`);
             const match = text.match(/(\d+)%/);
-            if (match) return parseInt(match[1]);
+            if (match) {
+                const percentage = parseInt(match[1]);
+                console.log(`[Auto Khoáng Mạch] Parsed Tu Vi bonus: ${percentage}%.`);
+                return percentage;
+            }
         }
-        console.warn('[Auto Khoáng Mạch] Failed to read Tu Vi bonus percentage.');
+        console.warn('[Auto Khoáng Mạch] Failed to read Tu Vi bonus percentage or format unrecognized. Returning -1.');
         return -1;
     }
 
@@ -207,11 +232,30 @@
 
         if (currentPlayerId) {
             playerRow = document.querySelector(`div.user-row button.claim-reward[data-user-id="${currentPlayerId}"]`)?.closest('div.user-row');
+            if (playerRow) {
+                console.log(`[Auto Khoáng Mạch] Found player's own row with ID: ${currentPlayerId}.`);
+            } else {
+                console.log(`[Auto Khoáng Mạch] Player's own row (ID: ${currentPlayerId}) not found directly by claim button.`);
+            }
+        } else {
+             console.log('[Auto Khoáng Mạch] Current User ID not available.');
         }
 
+
         if (!playerRow) {
-            console.log('[Auto Khoáng Mạch] Player-specific row not found. Trying any available claim button.');
-            playerRow = document.querySelector('div.user-row button.claim-reward:not(:disabled)')?.closest('div.user-row');
+            console.log('[Auto Khoáng Mạch] Searching for any claimable user row (first 2 rows).');
+            // Tìm nút nhận thưởng không bị disabled trong hai hàng đầu tiên nếu có
+            const userRows = document.querySelectorAll('div#user-list div.user-row'); // Updated selector
+            for (let i = 0; i < Math.min(userRows.length, 2); i++) { // Check first 2 user-rows
+                const row = userRows[i];
+                const claimButton = row.querySelector('button.claim-reward:not(:disabled)');
+                const khaiThacSpan = row.querySelector('span.khai-thac');
+                if (claimButton && khaiThacSpan && khaiThacSpan.textContent.trim() === 'Đạt tối đa') {
+                    playerRow = row;
+                    console.log(`[Auto Khoáng Mạch] Found claimable row for user ID: ${row.dataset.userId || 'unknown'}.`);
+                    break;
+                }
+            }
         }
 
         if (playerRow) {
@@ -223,10 +267,10 @@
                 let shouldClaim = false;
 
                 switch (selectedRewardMode) {
-                    case 'any': shouldClaim = true; break;
-                    case '0%': shouldClaim = tuviBonus > 0; break;
+                    case 'any': shouldClaim = true; break; // "Bất kỳ"
+                    case '0%': shouldClaim = tuviBonus > 0; break; // Logic cũ, không còn được dùng với UI mới nhưng giữ lại để an toàn
                     case '20%': shouldClaim = tuviBonus >= 20; break;
-                    case '50%': shouldClaim = tuviBonus >= 50; break;
+                    case '50%': shouldClaim = tuviBonus >= 50; break; // Logic cũ
                     case '100%': shouldClaim = tuviBonus >= 100; break;
                 }
 
@@ -254,7 +298,7 @@
                 setNextCycleTimer(60 * 1000);
             }
         } else {
-            console.log('[Auto Khoáng Mạch] No player row found in mine details. Retrying.');
+            console.log('[Auto Khoáng Mạch] No claimable player row found in mine details. Retrying.');
             setNextCycleTimer(CONFIG.TIMEOUT_RETRY_NO_ROW);
         }
     }
@@ -275,8 +319,14 @@
         const targetButton = document.querySelector(`button.mine-type-button[data-mine-type="${mineType}"]`);
         if (targetButton) {
             console.log(`[Auto Khoáng Mạch] Switching to mine type: "${mineType}".`);
-            safeClick(targetButton, `"${mineType}" mine type button`);
-            waitForElementStable('div.mine-image[data-mine-id]', nextStep, CONFIG.TIMEOUT_ELEMENT_STABLE, CONFIG.INTERVAL_ELEMENT_CHECK);
+            setTimeout(() => {
+                if (safeClick(targetButton, `"${mineType}" mine type button`)) {
+                    waitForElementStable('div.mine-image[data-mine-id]', nextStep, CONFIG.TIMEOUT_ELEMENT_STABLE, CONFIG.INTERVAL_ELEMENT_CHECK);
+                } else {
+                    console.error(`[Auto Khoáng Mạch] Failed to click "${mineType}" mine type button.`);
+                    setNextCycleTimer(CONFIG.TIMEOUT_RETRY_NO_DATA);
+                }
+            }, CONFIG.TIMEOUT_CLICK_DELAY);
         } else {
             console.error(`[Auto Khoáng Mạch] Could not find "${mineType}" mine type button.`);
             setNextCycleTimer(CONFIG.TIMEOUT_RETRY_NO_DATA);
@@ -292,8 +342,14 @@
         const pageButton = document.querySelector(`button.page-button.${direction}`);
         if (pageButton && !pageButton.disabled) {
             console.log(`[Auto Khoáng Mạch] Switching to ${direction} page.`);
-            safeClick(pageButton, `${direction} page button`);
-            waitForElementStable('div.mine-image[data-mine-id]', nextStep, CONFIG.TIMEOUT_ELEMENT_STABLE, CONFIG.INTERVAL_ELEMENT_CHECK);
+            setTimeout(() => {
+                if (safeClick(pageButton, `${direction} page button`)) {
+                    waitForElementStable('div.mine-image[data-mine-id]', nextStep, CONFIG.TIMEOUT_ELEMENT_STABLE, CONFIG.INTERVAL_ELEMENT_CHECK);
+                } else {
+                    console.error(`[Auto Khoáng Mạch] Failed to click ${direction} page button.`);
+                    setNextCycleTimer(CONFIG.TIMEOUT_RETRY_NO_DATA);
+                }
+            }, CONFIG.TIMEOUT_CLICK_DELAY);
         } else {
             console.warn(`[Auto Khoáng Mạch] ${direction} page button not found or disabled. End of pages?`);
             nextStep(); // Assume it's fine, continue
@@ -377,7 +433,8 @@
             setTimeout(() => {
                 if (safeClick(mineImageDiv, `Mine Image (ID: ${targetMineId})`)) {
                     // Wait for the user rows to load inside the detail modal
-                    waitForElementStable(`div.mine[data-mine-id="${targetMineId}"] div.user-row`, (userRow) => {
+                    // Corrected selector: using 'div#user-list div.user-row'
+                    waitForElementStable('div#user-list div.user-row', (userRow) => {
                         if (userRow) {
                             console.log('[Auto Khoáng Mạch] Mine details (user-row) loaded.');
                             nextStep();
@@ -398,26 +455,18 @@
     }
 
     /**
-     * Kiểm tra xem đang ở trong giao diện chi tiết mỏ đã chọn hay không.
+     * Kiểm tra xem đang ở trong trang chi tiết mỏ đã chọn hay không (có nút "Rời Khỏi").
+     * Hàm này KHÔNG kiểm tra xem modal chi tiết mỏ có mở và dữ liệu có sẵn hay không.
      * @param {string} targetMineId - ID của mỏ.
-     * @param {function(boolean): void} callback - Callback với true nếu đang ở trong mỏ chi tiết, false nếu không.
+     * @param {function(boolean): void} callback - Callback với true nếu đang ở trong trang chi tiết mỏ, false nếu không.
      */
-    function checkInsideSelectedMineDetails(targetMineId, callback) {
+    function checkOnMineDetailPage(targetMineId, callback) {
         waitForElementStable(`button.leave-mine[data-mine-id="${targetMineId}"]`, (leaveButton) => {
             if (leaveButton) {
-                // If leave button exists, we are on the mine detail page.
-                // Now, ensure the inner details (user-row) are also loaded.
-                waitForElementStable(`div.mine[data-mine-id="${targetMineId}"] div.user-row`, (userRow) => {
-                    if (userRow) {
-                        console.log(`[Auto Khoáng Mạch] Confirmed in mine detail view for ID ${targetMineId}.`);
-                        callback(true);
-                    } else {
-                        console.warn(`[Auto Khoáng Mạch] On mine detail page ID ${targetMineId}, but user-row not loaded.`);
-                        callback(false);
-                    }
-                }, 7000); // 7s for user-row
+                console.log(`[Auto Khoáng Mạch] Confirmed on mine detail page for ID ${targetMineId}.`);
+                callback(true);
             } else {
-                console.log(`[Auto Khoáng Mạch] Not in mine detail view for ID ${targetMineId}.`);
+                console.log(`[Auto Khoáng Mạch] Not on mine detail page for ID ${targetMineId}.`);
                 callback(false);
             }
         }, 5000); // 5s for leave button
@@ -446,46 +495,28 @@
             return;
         }
 
-        // 1. Ensure correct mine type is selected
+        // 1. Kiểm tra loại mỏ và nhấn vào nút loại mỏ thượng/trung/hạ.
         switchMineType(targetMineInfo.type, () => {
-            // 2. Check if we are already inside the target mine's detail view (modal)
-            checkInsideSelectedMineDetails(selectedMineId, (isInsideDetails) => {
-                if (isInsideDetails) {
-                    console.log(`[Auto Khoáng Mạch] Already inside mine ID ${selectedMineId} details. Processing player row.`);
-                    processPlayerMineRow(); // This function will schedule the next cycle
+            // 2. Kiểm tra xem người dùng có trên trang chi tiết mỏ không (có nút "Rời Khỏi" không).
+            checkOnMineDetailPage(selectedMineId, (isOnDetailPage) => {
+                if (isOnDetailPage) {
+                    console.log(`[Auto Khoáng Mạch] Already on mine ID ${selectedMineId} detail page. Clicking mine image to open details modal.`);
+                    // Nếu đã ở trên trang chi tiết mỏ (có nút "Rời Khỏi"), thì click vào hình ảnh mỏ để mở modal chứa thông tin khai thác.
+                    clickMineImageForDetails(selectedMineId, () => {
+                        console.log('[Auto Khoáng Mạch] Mine details modal loaded. Processing player row.');
+                        processPlayerMineRow(); // This function will schedule the next cycle
+                    });
                 } else {
-                    // Not inside details. Need to navigate or open modal.
-                    const enterButtonOnPage = document.querySelector(`button.enter-mine[data-mine-id="${selectedMineId}"]`);
-                    const leaveButtonOnPage = document.querySelector(`button.leave-mine[data-mine-id="${selectedMineId}"]`);
-
-                    if (enterButtonOnPage && enterButtonOnPage.offsetParent !== null && !enterButtonOnPage.disabled) {
-                        console.log(`[Auto Khoáng Mạch] Found "Vào Ngay" button for ID ${selectedMineId} on current page. Entering mine.`);
-                        navigateAndEnterMine(selectedMineId, () => {
-                            // After entering the mine detail page (has leave button), click the mine image to open the modal
-                            console.log(`[Auto Khoáng Mạch] Entered mine detail page. Clicking mine image to open details modal.`);
-                            clickMineImageForDetails(selectedMineId, () => {
-                                // Once modal is open and loaded, process the player row.
-                                console.log('[Auto Khoáng Mạch] Mine details modal loaded. Processing player row.');
-                                processPlayerMineRow();
-                            });
-                        });
-                    } else if (leaveButtonOnPage && leaveButtonOnPage.offsetParent !== null && !leaveButtonOnPage.disabled) {
-                        // Already on the mine detail page, but modal might not be open or loaded. Click image to force it.
-                        console.log(`[Auto Khoáng Mạch] On mine detail page ID ${selectedMineId} (has "Rời Khỏi" button), but not in details view. Clicking mine image.`);
+                    // Nếu không ở trên trang chi tiết mỏ, script sẽ tìm nút "Vào Ngay" cho mỏ đó.
+                    console.log(`[Auto Khoáng Mạch] Not on mine ID ${selectedMineId} detail page. Attempting to navigate and enter.`);
+                    navigateAndEnterMine(selectedMineId, () => {
+                        // Sau khi vào trang chi tiết mỏ, click vào hình ảnh mỏ để mở modal chứa thông tin khai thác.
+                        console.log(`[Auto Khoáng Mạch] Entered mine detail page. Clicking mine image to open details modal.`);
                         clickMineImageForDetails(selectedMineId, () => {
                             console.log('[Auto Khoáng Mạch] Mine details modal loaded. Processing player row.');
                             processPlayerMineRow();
                         });
-                    } else {
-                        // Not on the correct page to enter the mine directly. Need to navigate pages.
-                        console.log(`[Auto Khoáng Mạch] "Vào Ngay" button for ID ${selectedMineId} not found. Navigating pages to find it.`);
-                        navigateAndEnterMine(selectedMineId, () => {
-                            // navigateAndEnterMine will handle page switching and entering the mine detail page.
-                            // After it's done, it will call startMiningCycle again to initiate clickMineImageForDetails.
-                            console.log(`[Auto Khoáng Mạch] Navigation complete. Re-triggering cycle to open mine details.`);
-                            setNextCycleTimer(CONFIG.TIMEOUT_PAGE_NAV_WAIT);
-                        });
-                    }
+                    });
                 }
             });
         });
@@ -499,6 +530,10 @@
         if (currentTimerId) {
             clearTimeout(currentTimerId);
             currentTimerId = null;
+        }
+        if (refreshTimerId) { // Clear refresh timer
+            clearTimeout(refreshTimerId);
+            refreshTimerId = null;
         }
         const startButton = document.querySelector('#startButton');
         const stopButton = document.querySelector('#stopButton');
@@ -528,6 +563,7 @@
                 stopButton.disabled = false;
             }
             console.log('[Auto Khoáng Mạch] Auto started.');
+            setRefreshTimer(); // Bắt đầu đặt hẹn giờ refresh khi auto khởi động
             startMiningCycle();
         }
     }
@@ -642,10 +678,8 @@
                     <label for="rewardModeSelect">Chế độ Nhận Thưởng:</label>
                     <select id="rewardModeSelect">
                         <option value="100%">Thưởng thêm >= 100%</option>
-                        <option value="50%">Thưởng thêm >= 50%</option>
                         <option value="20%">Thưởng thêm >= 20%</option>
-                        <option value="0%">Thưởng thêm > 0%</option>
-                        <option value="any">Bất kỳ (Đạt tối đa)</option>
+                        <option value="any">Bất kỳ</option>
                     </select>
                 </div>
                 <div class="config-group checkbox-group">
@@ -664,19 +698,24 @@
             const stopButton = configDiv.querySelector('#stopButton');
 
             specificMineSelect.value = selectedMineId;
+            // Fallback for old reward modes
+            if (!['100%', '20%', 'any'].includes(selectedRewardMode)) {
+                selectedRewardMode = 'any'; // Default to 'Bất kỳ' if old mode is found
+                localStorage.setItem(CONFIG.LOCAL_STORAGE_PREFIX + 'reward_mode', selectedRewardMode);
+            }
             rewardModeSelect.value = selectedRewardMode;
             autoStartCheckbox.checked = autoStartEnabled;
 
             specificMineSelect.addEventListener('change', (event) => {
                 selectedMineId = event.target.value;
                 localStorage.setItem(CONFIG.LOCAL_STORAGE_PREFIX + 'id', selectedMineId);
-                console.log(`[Auto Khoáng Mạch] Selected mine ID: ${selectedMineId}`);
+                console.log(`[Auto Khoáng Mạch] Mine ID set to: ${selectedMineId}`);
             });
 
             rewardModeSelect.addEventListener('change', (event) => {
                 selectedRewardMode = event.target.value;
                 localStorage.setItem(CONFIG.LOCAL_STORAGE_PREFIX + 'reward_mode', selectedRewardMode);
-                console.log(`[Auto Khoáng Mạch] Selected reward mode: ${selectedRewardMode}`);
+                console.log(`[Auto Khoáng Mạch] Reward mode set to: ${selectedRewardMode}`);
             });
 
             autoStartCheckbox.addEventListener('change', (event) => {
@@ -688,29 +727,25 @@
             startButton.addEventListener('click', startAuto);
             stopButton.addEventListener('click', stopAuto);
 
-            // Set initial button states
+            // Update button states based on initial running status
             if (isAutoRunning) {
                 startButton.textContent = 'Đang chạy...';
                 startButton.disabled = true;
                 stopButton.disabled = false;
             } else {
+                startButton.textContent = 'Bắt đầu Auto';
+                startButton.disabled = false;
                 stopButton.disabled = true;
             }
 
             isUIMade = true;
             console.log('[Auto Khoáng Mạch] UI created.');
 
-            if (uiObserver) {
-                uiObserver.disconnect();
-                console.log('[Auto Khoáng Mạch] UI creation observer disconnected.');
-            }
-
-            // If autoStart is enabled, start the auto process immediately
-            if (autoStartEnabled) {
+            if (autoStartEnabled && !isAutoRunning) {
                 console.log('[Auto Khoáng Mạch] Auto start enabled. Starting auto.');
                 startAuto();
             }
-        }, CONFIG.TIMEOUT_ELEMENT_STABLE); // Max 15 seconds to find mine-buttons
+        });
     }
 
     // --- KHỞI TẠO SCRIPT ---

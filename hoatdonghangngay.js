@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         HH3D Hoạt Động Hàng Ngày
-// @namespace    http://tampermonkey.net/
-// @version      1.3
-// @description  Tự động mở rương thưởng hàng ngày, thêm nút chuyển trang Vòng Quay Phúc Vận và các nút điều hướng đến từng nhiệm vụ chưa hoàn thành.
-// @author       Dr. Trune
-// @match        https://hoathinh3d.gg/bang-hoat-dong-ngay*
-// @grant        none
+// @name        HH3D Hoạt Động Hàng Ngày
+// @namespace   https://github.com/drtrune/hoathinh3d.script
+// @version     1.4
+// @description Tự động mở rương thưởng hàng ngày, thêm nút chuyển trang Vòng Quay Phúc Vận và các nút điều hướng đến từng nhiệm vụ chưa hoàn thành.
+// @author      Dr. Trune
+// @match       https://hoathinh3d.gg/bang-hoat-dong-ngay*
+// @grant       none
 // ==/UserScript==
 
 (function() {
@@ -20,7 +20,7 @@
     // Trạng thái ban đầu của tính năng tự động mở rương
     let autoOpenChestsActive = true;
 
-    // Các ID của rương cần tự động mở
+    // Các ID của rương cần tự động mở (vẫn là ID của div chứa rương)
     const CHEST_IDS = ['reward-box-1', 'reward-box-2'];
 
     // Danh sách các nhiệm vụ và URL tương ứng
@@ -263,19 +263,31 @@
         console.log('[Hoạt Động Ngày Enhancer] Đang cố gắng mở rương thưởng...');
 
         CHEST_IDS.forEach(id => {
-            const chestElement = document.getElementById(id);
+            const chestElement = document.getElementById(id); // This is the div
             if (chestElement) {
-                if (chestElement.onclick && !chestElement.classList.contains('opened')) {
-                    try {
-                        console.log(`[Hoạt Động Ngày Enhancer] Đang kích hoạt onclick cho rương: ${id}`);
-                        chestElement.click();
-                    } catch (e) {
-                        console.error(`[Hoạt Động Ngày Enhancer] Lỗi khi kích hoạt rương ${id}:`, e);
+                const imageElement = chestElement.querySelector('.reward-image');
+
+                if (imageElement) {
+                    // Kiểm tra nếu rương có class 'unlocked' VÀ không có class 'opened'
+                    if (chestElement.classList.contains('unlocked') && !chestElement.classList.contains('opened')) {
+                        try {
+                            console.log(`[Hoạt Động Ngày Enhancer] Đang kích hoạt sự kiện click cho ảnh trong rương: ${id}`);
+                            const clickEvent = new MouseEvent('click', {
+                                view: window,
+                                bubbles: true,
+                                cancelable: true
+                            });
+                            imageElement.dispatchEvent(clickEvent);
+                        } catch (e) {
+                            console.error(`[Hoạt Động Ngày Enhancer] Lỗi khi kích hoạt ảnh trong rương ${id}:`, e);
+                        }
+                    } else if (chestElement.classList.contains('opened')) {
+                        console.log(`[Hoạt Động Ngày Enhancer] Rương ${id} đã được mở.`);
+                    } else if (!chestElement.classList.contains('unlocked')) {
+                        console.log(`[Hoạt Động Ngày Enhancer] Rương ${id} chưa mở khóa (không có class 'unlocked').`);
                     }
-                } else if (chestElement.classList.contains('opened')) {
-                    console.log(`[Hoạt Động Ngày Enhancer] Rương ${id} đã được mở.`);
                 } else {
-                    console.log(`[Hoạt Động Ngày Enhancer] Rương ${id} không có sự kiện onclick hoặc không khả dụng.`);
+                    console.log(`[Hoạt Động Ngày Enhancer] Không tìm thấy ảnh (.reward-image) trong rương với ID: ${id}`);
                 }
             } else {
                 console.log(`[Hoạt Động Ngày Enhancer] Không tìm thấy rương với ID: ${id}`);

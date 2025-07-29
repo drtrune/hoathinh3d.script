@@ -23,7 +23,7 @@
     const DELAY_BEFORE_CLICK = 500; // 0.5 giây độ trễ trước khi thực hiện click
     const DELAY_AFTER_ATTACK = 2000; // 2 giây độ trễ sau khi tấn công trước khi click Trở lại
     const CHECK_INTERVAL_AFTER_ACTION_MS = 3000; // Kiểm tra lại mỗi 3 giây sau khi hoàn tất 1 chu trình hoặc không tìm thấy button
-    const IDLE_CHECK_INTERVAL_MS = 10000; // 10 giây: Khoảng thời gian kiểm tra khi script đang "nghỉ" (hết lượt hoặc chờ cooldown)
+    const IDLE_CHECK_INTERVAL_MS = 3600*1000; // 1 giờ: Khoảng thời gian kiểm tra khi script đang "nghỉ" (hết lượt hoặc chờ cooldown)
 
     // ===============================================
     // CẤU HÌNH BAN ĐẦU VÀ BIẾN TOÀN CỤC

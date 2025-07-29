@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tông Môn (Tế Lễ - Siêu Ngắn Gọn)
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.3
 // @description  Tự động click nút "Tế Lễ" và xác nhận trên trang Danh Sách Thành Viên Tông Môn. Không có log chi tiết.
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/danh-sach-thanh-vien-tong-mon*
@@ -44,10 +44,10 @@
                 safeClick(teLeButton);
             }, DELAY_BEFORE_CLICK);
         } else {
-            // Không tìm thấy nút nào, có thể đã xong hoặc chưa đến lúc.
-            // Có thể dừng nếu muốn, nhưng để script tiếp tục kiểm tra sẽ an toàn hơn trong một số trường hợp.
-            // Để tiết kiệm tài nguyên, có thể thêm một biến đếm và dừng sau N lần không tìm thấy.
-            // Tuy nhiên, với yêu cầu "ngắn gọn", ta sẽ giữ nó đơn giản.
+    // Đếm số lần không tìm thấy nút nào
+                window._teleNotFoundCount = (window._teleNotFoundCount || 0) + 1;
+                if (window._teleNotFoundCount >= 5) {
+        clearInterval(mainIntervalId);
         }
     }
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tiên duyên
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      2.8
+// @version      2.9
 // @description  Tự động chúc phúc và nhận lì xì
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/phong-cuoi*
@@ -21,14 +21,14 @@
     const LIXI_MODAL_TEXT = "Đạo hữu là vị khách may mắn nhận được lì xì từ chủ tiệc cưới. Hãy mở để xem điều bất ngờ!";
 
     // Thời gian kiểm tra lặp lại chính của vòng lặp tổng thể
-    const MAIN_CHECK_INTERVAL = 2000; // Mỗi 2 giây
+    const MAIN_CHECK_INTERVAL = 1000; // Mỗi 1 giây
 
     // Cấu hình thời gian chờ và số lần thử cho việc tìm lì xì cụ thể sau khi đã xác định trạng thái chúc phúc
-    const LIXI_CHECK_INTERVAL = 2000; // 2 giây
-    const LIXI_CHECK_RETRIES = 5;     // Tối đa 5 lần (tổng 10 giây chờ lì xì)
+    const LIXI_CHECK_INTERVAL = 1000; // 1 giây
+    const LIXI_CHECK_RETRIES = 5;     // Tối đa 5 lần (tổng 5 giây chờ lì xì)
 
     // Thời gian chờ cố định giữa các bước thao tác (điền text, click nút)
-    const INTER_ACTION_DELAY = 1000; // 1 giây
+    const INTER_ACTION_DELAY = 500; // 0.5 giây
 
     // --- Biến cờ trạng thái ---
     let isBlessingProcessActive = false; // Cờ để đảm bảo quá trình chúc phúc chỉ chạy một lần
@@ -121,9 +121,9 @@
             if (lixiMessageP && lixiMessageP.offsetParent !== null) {
                 // Nếu tìm thấy dòng chữ, thử tìm nút mở lì xì
                 console.log(`[Auto Blessing] handleLixiWithRetries: Đã tìm thấy dòng chữ lì xì (lần ${i+1}/${LIXI_CHECK_RETRIES})!`);
-                
+
                 const openButton = await waitForElementSimple('#openButton', INTER_ACTION_DELAY * 2, 200, 'nút "Mở Lì Xì"');
-                
+
                 if (openButton) {
                     console.log('[Auto Blessing] handleLixiWithRetries: Đã tìm thấy nút "Mở Lì Xì". Đang nhấp...');
                     if (safeClick(openButton, 'nút "Mở Lì Xì"')) {
@@ -223,6 +223,19 @@
         }
     }
 
+    // --- Hàm để di chuyển phần tử blessing-section lên trên container > header ---
+    function moveBlessingSection() {
+        const blessingSection = document.querySelector('.blessing-section');
+        const containerHeader = document.querySelector('.container > header');
+
+        if (blessingSection && containerHeader) {
+            containerHeader.parentNode.insertBefore(blessingSection, containerHeader);
+            console.log('[Auto Blessing] Đã di chuyển blessing-section lên trên header.');
+        } else {
+            console.warn('[Auto Blessing] Không tìm thấy một trong các phần tử cần di chuyển: blessing-section hoặc .container > header.');
+        }
+    }
+
     // --- Hàm kiểm tra chính lặp lại ---
     async function mainLoopCheck() {
         if (isScriptStopping) {
@@ -238,7 +251,7 @@
             stopAutoBlessing();
             return;
         }
-        
+
         // --- Xác định trạng thái đã chúc phúc ---
         let alreadyBlessed = false;
         if (blessingMessageDiv && blessingMessageDiv.textContent.includes(ALREADY_BLESSED_MESSAGE)) {
@@ -294,15 +307,19 @@
     }
 
     // --- Đảm bảo script khởi động một cách mạnh mẽ ---
+    // Di chuyển phần tử ngay lập tức khi DOM có thể truy cập
+    moveBlessingSection();
     startMainLoop();
 
     window.addEventListener('DOMContentLoaded', () => {
         console.log('[Auto Blessing] DOMContentLoaded đã kích hoạt. Kiểm tra lại khởi động vòng lặp.');
+        moveBlessingSection(); // Đảm bảo di chuyển nếu chưa được thực hiện
         startMainLoop();
     });
 
     window.addEventListener('load', () => {
         console.log('[Auto Blessing] window.load đã kích hoạt. Kiểm tra lại khởi động vòng lặp.');
+        moveBlessingSection(); // Đảm bảo di chuyển nếu chưa được thực hiện
         startMainLoop();
     });
 

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name          HH3D Bí Cảnh Tông Môn
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       1.1
-// @description   Tự động khiêu chiến và tấn công boss trong Bí Cảnh Tông Môn, sau đó quay lại màn hình chính.
+// @version       1.7
+// @description   Tự động khiêu chiến và tấn công boss trong Bí Cảnh Tông Môn. Tích hợp UI nút toggle, hiển thị trạng thái, tạm dừng khi hết lượt, và tự động tiếp tục khi có lượt mới.
 // @author        Dr.Trune
 // @match         https://hoathinh3d.gg/bi-canh-tong-mon*
 // @grant         none
@@ -15,7 +15,7 @@
     // CẤU HÌNH CÁC BIẾN THỜI GIAN
     // ===============================================
 
-    const INITIAL_SCRIPT_DELAY = 3000; // 1 giây delay trước khi script bắt đầu chạy
+    const INITIAL_SCRIPT_DELAY = 3000; // 3 giây delay trước khi script bắt đầu chạy
     const TIMEOUT_ELEMENT_STABLE = 5000; // 5 giây chờ element ổn định/xuất hiện
     const INTERVAL_ELEMENT_STABLE = 500; // 0.5 giây kiểm tra element
 
@@ -23,15 +23,17 @@
     const DELAY_BEFORE_CLICK = 500; // 0.5 giây độ trễ trước khi thực hiện click
     const DELAY_AFTER_ATTACK = 2000; // 2 giây độ trễ sau khi tấn công trước khi click Trở lại
     const CHECK_INTERVAL_AFTER_ACTION_MS = 3000; // Kiểm tra lại mỗi 3 giây sau khi hoàn tất 1 chu trình hoặc không tìm thấy button
+    const IDLE_CHECK_INTERVAL_MS = 10000; // 10 giây: Khoảng thời gian kiểm tra khi script đang "nghỉ" (hết lượt hoặc chờ cooldown)
 
     // ===============================================
     // CẤU HÌNH BAN ĐẦU VÀ BIẾN TOÀN CỤC
     // ===============================================
 
     const AUTO_CLICK_TOGGLE_KEY = 'hh3dBiCanhAutoClickEnabled';
-    let isAutoClickEnabled = getAutoClickStateFromStorage();
     let isUIMade = false;
     let isScriptFullyInitialized = false;
+    let isScriptRunning = false; // Biến trạng thái để kiểm soát vòng lặp chính
+    let lastStopReason = ''; // Biến để lưu lý do dừng gần nhất
 
     let mainLoopTimeoutId = null;
     let scriptStatusElement = null;
@@ -43,7 +45,7 @@
     function updateScriptStatus(message, type = 'log') {
         if (scriptStatusElement) {
             scriptStatusElement.textContent = `Trạng thái: ${message}`;
-            scriptStatusElement.style.color = type === 'error' ? '#ff4d4d' : '#B0C4DE';
+            scriptStatusElement.style.color = type === 'error' ? '#ff4d4d' : (type === 'warn' ? '#FFD700' : '#B0C4DE');
         }
         if (type === 'warn') console.warn(`[HH3D Bí Cảnh] ${message}`);
         else if (type === 'error') console.error(`[HH3D Bí Cảnh] ${message}`);
@@ -78,8 +80,6 @@
             updateScriptStatus(`Lỗi: Không click được ${elementName} (null).`, 'error');
             return false;
         }
-        // For buttons that might be in a modal, offsetParent might be null temporarily.
-        // We assume modal buttons are always clickable if found by selector.
         if (element.offsetParent === null && !element.id.includes('button')) {
              updateScriptStatus(`${elementName} không hiển thị hoặc không tương tác.`, 'warn');
              return false;
@@ -119,6 +119,15 @@
         return 0;
     }
 
+    function getAttackCount() {
+        const attackCountSpan = document.querySelector('div.attack-info-display span.attack-count');
+        if (attackCountSpan) {
+            const count = parseInt(attackCountSpan.textContent.trim(), 10);
+            return isNaN(count) ? 0 : count;
+        }
+        return 0; // Trả về 0 nếu không tìm thấy phần tử, coi như hết lượt
+    }
+
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
@@ -142,20 +151,39 @@
 
     function setAutoClickStateInStorage(enabled) {
         localStorage.setItem(AUTO_CLICK_TOGGLE_KEY, JSON.stringify(enabled));
-        isAutoClickEnabled = enabled;
-        updateScriptStatus(enabled ? 'Tự động click đã BẬT.' : 'Tự động click đã TẮT.', 'info');
+    }
 
+    function updateToggleSwitchUI(enabled) {
         const toggleSwitch = document.getElementById('autoClickToggleSwitch');
         if (toggleSwitch) {
             toggleSwitch.checked = enabled;
         }
+    }
 
-        if (!enabled) {
-            if (mainLoopTimeoutId) clearTimeout(mainLoopTimeoutId);
+    function stopMainLoop(reason = 'stopped_internally') {
+        if (mainLoopTimeoutId) {
+            clearTimeout(mainLoopTimeoutId);
             mainLoopTimeoutId = null;
-            updateScriptStatus('Vòng lặp tự động click đã dừng.', 'info');
-        } else if (enabled && !mainLoopTimeoutId) {
-            startMainLoop();
+        }
+        isScriptRunning = false;
+        lastStopReason = reason; // Lưu lý do dừng
+        // Thông báo sẽ được xử lý ở các hàm gọi stopMainLoop, hoặc khi observer kích hoạt
+    }
+
+    function startMainLoopIfEnabled() {
+        if (!getAutoClickStateFromStorage()) {
+            updateScriptStatus('Tự động tấn công đang TẮT. Bật để bắt đầu.', 'info');
+            stopMainLoop('disabled_by_user_pref'); // Đảm bảo vòng lặp không chạy nếu trạng thái tắt
+            return;
+        }
+
+        if (!isScriptRunning) { // Chỉ bắt đầu nếu chưa chạy
+            isScriptRunning = true;
+            lastStopReason = ''; // Xóa lý do dừng khi bắt đầu lại
+            updateScriptStatus('Bắt đầu vòng lặp kiểm tra chính...', 'info');
+            checkAndClickBoss();
+        } else {
+            console.log('[HH3D Bí Cảnh] Vòng lặp chính đã chạy.');
         }
     }
 
@@ -164,8 +192,28 @@
     // ===============================================
 
     async function checkAndClickBoss() {
-        if (!isAutoClickEnabled) {
-            updateScriptStatus('Tự động click đang TẮT. Bỏ qua.', 'info');
+        // Bước 1: Kiểm tra trạng thái tự động click
+        if (!getAutoClickStateFromStorage() || !isScriptRunning) {
+            // Khi dừng do người dùng tắt preference hoặc isScriptRunning bị false từ đâu đó
+            if (lastStopReason === 'disabled_by_user_pref') {
+                updateScriptStatus('Tự động tấn công đang TẮT. Bỏ qua.', 'info');
+            } else if (lastStopReason === 'stopped_by_user_api') {
+                 updateScriptStatus('Script đã dừng bởi người dùng.', 'info');
+            } else if (lastStopReason === 'no_attack_count_on_start') {
+                // Đã xử lý ở bước 2, không cần thông báo lại ở đây
+            } else {
+                 // Đây là trường hợp dừng nội bộ không rõ ràng, có thể do isScriptRunning bị false bất ngờ
+                 updateScriptStatus('Script không hoạt động. Đã dừng nội bộ.', 'info');
+            }
+            stopMainLoop('checked_inactive'); // Dừng chính thức nếu chưa dừng
+            return;
+        }
+
+        // Bước 2: Kiểm tra số lượt đánh còn lại
+        const currentAttackCount = getAttackCount();
+        if (currentAttackCount <= 0) {
+            updateScriptStatus('Đã hết lượt đánh. Tạm dừng tấn công.', 'warn');
+            stopMainLoop('no_attack_count'); // Đánh dấu lý do dừng
             return;
         }
 
@@ -185,19 +233,34 @@
                 await sleep(DELAY_BEFORE_CLICK);
                 if (safeClick(challengeBossBtn, 'nút "Khiêu Chiến"')) {
                     updateScriptStatus('Đã click Khiêu Chiến. Đang chờ nút Tấn Công...', 'info');
-                    // Wait for the attack button to appear in the modal
                     waitForElementStable('button#attack-boss-btn.attack-button', async (attackBossBtn) => {
+                        if (!getAutoClickStateFromStorage() || !isScriptRunning) {
+                            updateScriptStatus('Script đã bị dừng trong lúc chờ. Bỏ qua.', 'info');
+                            stopMainLoop('stopped_during_wait');
+                            return;
+                        }
                         if (attackBossBtn) {
-                            await sleep(DELAY_BEFORE_CLICK); // Small delay before clicking attack
+                            await sleep(DELAY_BEFORE_CLICK);
                             if (safeClick(attackBossBtn, 'nút "Tấn Công"')) {
                                 updateScriptStatus('Đã click Tấn Công. Chờ để trở lại...', 'success');
-                                await sleep(DELAY_AFTER_ATTACK); // Wait a bit after attacking
-                                // Now, look for the "Trở lại" button
+                                await sleep(DELAY_AFTER_ATTACK);
                                 waitForElementStable('button#back-button.back-button', async (backButton) => {
+                                    if (!getAutoClickStateFromStorage() || !isScriptRunning) {
+                                        updateScriptStatus('Script đã bị dừng trong lúc chờ. Bỏ qua.', 'info');
+                                        stopMainLoop('stopped_during_wait');
+                                        return;
+                                    }
                                     if (backButton) {
                                         if (safeClick(backButton, 'nút "Trở lại"')) {
-                                            updateScriptStatus('Đã trở lại. Chu trình hoàn tất. Kiểm tra lại sau.', 'info');
-                                            mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS); // Schedule next check
+                                            updateScriptStatus('Đã trở lại. Chu trình hoàn tất. Kiểm tra lại lượt đánh.', 'info');
+                                            // Sau khi trở lại, kiểm tra lại lượt đánh ngay lập tức
+                                            const finalAttackCount = getAttackCount();
+                                            if (finalAttackCount <= 0) {
+                                                updateScriptStatus('Đã hết lượt đánh sau khi tấn công. Tạm dừng.', 'warn');
+                                                stopMainLoop('no_attack_count_after_last_attack'); // Đánh dấu lý do dừng
+                                            } else {
+                                                mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
+                                            }
                                         } else {
                                             updateScriptStatus('Không thể click nút Trở lại. Sẽ thử lại vòng lặp chính.', 'warn');
                                             mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
@@ -206,7 +269,7 @@
                                         updateScriptStatus('Không tìm thấy nút Trở lại. Sẽ thử lại vòng lặp chính.', 'warn');
                                         mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
                                     }
-                                }, 5000); // Give 5 seconds for back button to appear
+                                }, 5000);
                             } else {
                                 updateScriptStatus('Không thể click nút Tấn Công. Sẽ thử lại vòng lặp chính.', 'warn');
                                 mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
@@ -215,7 +278,7 @@
                             updateScriptStatus('Không tìm thấy nút Tấn Công trong modal. Sẽ thử lại.', 'warn');
                             mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
                         }
-                    }, 10000); // Give more time for modal to appear (10 seconds)
+                    }, 10000);
                 } else {
                     updateScriptStatus('Không thể click nút Khiêu Chiến. Sẽ thử lại sau.', 'warn');
                     mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
@@ -226,7 +289,7 @@
             }
         } else {
             updateScriptStatus('Không tìm thấy nút Khiêu Chiến. Đang chờ.', 'warn');
-            mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
+            mainLoopTimeoutId = setTimeout(checkAndClickBoss, IDLE_CHECK_INTERVAL_MS);
         }
     }
 
@@ -243,10 +306,7 @@
 
     function createMainUI() {
         if (isUIMade) {
-            const toggleSwitch = document.getElementById('autoClickToggleSwitch');
-            if (toggleSwitch) {
-                toggleSwitch.checked = isAutoClickEnabled;
-            }
+            updateToggleSwitchUI(getAutoClickStateFromStorage());
             return;
         }
 
@@ -350,17 +410,15 @@
                 word-wrap: break-word;
                 line-height: 1.4;
             }
-            /* Removed #attackCountDisplay styles as it's no longer needed in UI */
         `);
 
-        // Find the target element to insert the UI above it
         waitForElementStable('div.attack-info-display', (targetDiv) => {
             if (targetDiv && !isUIMade) {
                 const configDiv = document.createElement('div');
                 configDiv.id = 'hh3dBiCanhConfig';
                 configDiv.innerHTML = `
                     <div class="config-row">
-                        <label>Tự động tấn công boss</label>
+                        <label>Tự động tấn công boss:</label>
                         <label class="switch">
                             <input type="checkbox" id="autoClickToggleSwitch">
                             <span class="slider"></span>
@@ -369,14 +427,22 @@
                     <span id="scriptStatus">Trạng thái: Đang khởi tạo...</span>
                 `;
 
-                // Insert the new UI div right before the target div
                 targetDiv.parentNode.insertBefore(configDiv, targetDiv);
 
                 scriptStatusElement = configDiv.querySelector('#scriptStatus');
                 const toggleSwitch = configDiv.querySelector('#autoClickToggleSwitch');
-                toggleSwitch.checked = isAutoClickEnabled;
+                updateToggleSwitchUI(getAutoClickStateFromStorage());
+
                 toggleSwitch.addEventListener('change', (event) => {
-                    setAutoClickStateInStorage(event.target.checked);
+                    const isChecked = event.target.checked;
+                    setAutoClickStateInStorage(isChecked);
+                    if (isChecked) {
+                        startMainLoopIfEnabled();
+                    } else {
+                        // Khi người dùng tắt thủ công
+                        stopMainLoop('user_toggled_off');
+                        updateScriptStatus('Script đã dừng thủ công.', 'info');
+                    }
                 });
 
                 isUIMade = true;
@@ -384,7 +450,7 @@
             } else if (!targetDiv && !isUIMade) {
                 console.warn('[HH3D Bí Cảnh] Không tìm thấy div.attack-info-display để chèn UI. UI có thể không hiển thị.');
             }
-        }, 10000); // Give more time to find the target div for UI insertion
+        }, 10000);
     }
 
     // ===============================================
@@ -405,21 +471,8 @@
         createMainUI();
 
         waitForElementStable('#scriptStatus', () => {
-            if (isAutoClickEnabled) {
-                startMainLoop();
-            } else {
-                updateScriptStatus('Tự động boss đang TẮT. Bật để bắt đầu.', 'info');
-            }
+            startMainLoopIfEnabled(); // Sẽ tự quyết định thông báo dựa trên getAutoClickStateFromStorage()
         }, 5000);
-    }
-
-    function startMainLoop() {
-        if (mainLoopTimeoutId === null) {
-            updateScriptStatus('Bắt đầu vòng lặp kiểm tra chính...', 'info');
-            checkAndClickBoss();
-        } else {
-            console.log('[HH3D Bí Cảnh] Vòng lặp chính đã chạy.');
-        }
     }
 
     // --- Entry Point ---
@@ -427,24 +480,69 @@
         initializeScript();
     });
 
-    // We no longer need to observe for attack count changes since it's not displayed in UI
     const observer = new MutationObserver((mutations, obs) => {
         if (!isScriptFullyInitialized) {
-            // Check for presence of key game elements indicating the page is loaded enough
             if (document.querySelector('button#challenge-boss-btn') || document.querySelector('div.attack-info-display')) {
                 initializeScript();
+                return;
+            }
+        }
+
+        if (getAutoClickStateFromStorage()) {
+            const currentAttackCount = getAttackCount();
+            const challengeBossBtn = document.querySelector('button#challenge-boss-btn');
+
+            if (currentAttackCount > 0 && challengeBossBtn && !challengeBossBtn.hasAttribute('disabled')) {
+                if (!isScriptRunning) {
+                    updateScriptStatus('Phát hiện lượt đánh mới/nút sẵn sàng. Tiếp tục tấn công...', 'info');
+                    startMainLoopIfEnabled();
+                }
+            } else if (currentAttackCount <= 0) {
+                if (isScriptRunning) { // Đảm bảo dừng nếu đang chạy và hết lượt
+                    stopMainLoop('no_attack_count_observer');
+                }
+                // Luôn cập nhật trạng thái hết lượt, kể cả khi script đã dừng
+                if (scriptStatusElement && (lastStopReason === 'no_attack_count' || lastStopReason === 'no_attack_count_after_last_attack' || lastStopReason === 'no_attack_count_observer')) {
+                     updateScriptStatus('Đã hết lượt đánh. Tạm dừng tấn công. Vui lòng nạp thêm lượt.', 'warn');
+                } else if (scriptStatusElement && !isScriptRunning && lastStopReason !== 'user_toggled_off' && lastStopReason !== 'stopped_by_user_api') {
+                     // Trường hợp hết lượt nhưng chưa có thông báo chính xác, hoặc có lỗi logic nào đó
+                     updateScriptStatus('Đã hết lượt đánh. Script tạm dừng chờ lượt mới.', 'warn');
+                }
+            } else if (challengeBossBtn && challengeBossBtn.hasAttribute('disabled') && getCooldownTimeFromButton(challengeBossBtn) === 0) {
+                if (!isScriptRunning) {
+                     updateScriptStatus('Nút Khiêu Chiến không xác định trạng thái, thử kiểm tra lại...', 'info');
+                     startMainLoopIfEnabled();
+                }
+            }
+        } else {
+            // Nếu người dùng đã tắt auto trong localStorage, đảm bảo vòng lặp dừng và UI khớp
+            if (isScriptRunning) {
+                stopMainLoop('disabled_by_user_pref_observer');
+                updateScriptStatus('Tự động tấn công đang TẮT. Bật để bắt đầu.', 'info');
             }
         }
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    window.stopAutoBiCanhScript = () => {
-        if (mainLoopTimeoutId) {
-            clearTimeout(mainLoopTimeoutId);
-            mainLoopTimeoutId = null;
+    waitForElementStable('div.attack-info-display', (el) => {
+        if (el) {
+            observer.observe(el, { childList: true, subtree: true, characterData: true, attributes: true });
+            waitForElementStable('button#challenge-boss-btn', (btn) => {
+                 if (btn) {
+                     observer.observe(btn, { attributes: true, childList: true, subtree: true });
+                 }
+            }, 5000);
+        } else {
+            console.warn('[HH3D Bí Cảnh] Không tìm thấy div.attack-info-display để quan sát. Quan sát toàn bộ body.');
+            observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
         }
-        updateScriptStatus('Script đã dừng hoàn toàn.', 'info');
+    }, 15000);
+
+    // Hàm public để dừng script thủ công (ví dụ: từ console trình duyệt)
+    window.stopAutoBiCanhScript = () => {
+        stopMainLoop('stopped_by_user_api');
+        setAutoClickStateInStorage(false);
+        updateToggleSwitchUI(false);
+        updateScriptStatus('Script đã dừng bởi người dùng.', 'info');
         console.log('[HH3D Bí Cảnh] Script đã được dừng bởi người dùng.');
     };
 

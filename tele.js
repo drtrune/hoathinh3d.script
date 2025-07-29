@@ -30,26 +30,28 @@
     }
 
     function checkAndTeLe() {
-        const confirmButton = document.querySelector('button.swal2-confirm.swal2-styled.swal2-default-outline');
-        const teLeButton = document.querySelector('button#te-le-button.btn.btn-danger.group-button');
+    const confirmButton = document.querySelector('button.swal2-confirm.swal2-styled.swal2-default-outline');
+    const teLeButton = document.querySelector('button#te-le-button.btn.btn-danger.group-button');
 
-        if (confirmButton && confirmButton.offsetParent !== null && !confirmButton.disabled) {
-            setTimeout(() => {
-                if (safeClick(confirmButton)) {
-                    clearInterval(mainIntervalId);
-                }
-            }, DELAY_BEFORE_CLICK);
-        } else if (teLeButton && teLeButton.offsetParent !== null && !teLeButton.disabled) {
-            setTimeout(() => {
-                safeClick(teLeButton);
-            }, DELAY_BEFORE_CLICK);
-        } else {
-    // Đếm số lần không tìm thấy nút nào
-                window._teleNotFoundCount = (window._teleNotFoundCount || 0) + 1;
-                if (window._teleNotFoundCount >= 5) {
-        clearInterval(mainIntervalId);
+    if (confirmButton && confirmButton.offsetParent !== null && !confirmButton.disabled) {
+        setTimeout(() => {
+            if (safeClick(confirmButton)) {
+                clearInterval(mainIntervalId);
+            }
+        }, DELAY_BEFORE_CLICK);
+        window._teleNotFoundCount = 0; // reset đếm nếu có nút
+    } else if (teLeButton && teLeButton.offsetParent !== null && !teLeButton.disabled) {
+        setTimeout(() => {
+            safeClick(teLeButton);
+        }, DELAY_BEFORE_CLICK);
+        window._teleNotFoundCount = 0; // reset đếm nếu có nút
+    } else {
+        window._teleNotFoundCount = (window._teleNotFoundCount || 0) + 1;
+        if (window._teleNotFoundCount >= 5) {
+            clearInterval(mainIntervalId);
         }
     }
+}
 
     window.addEventListener('load', () => {
          mainIntervalId = setInterval(checkAndTeLe, CHECK_INTERVAL);

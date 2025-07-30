@@ -15,8 +15,8 @@
     // CẤU HÌNH CÁC BIẾN THỜI GIAN
     // ===============================================
 
-    const INITIAL_SCRIPT_DELAY = 1000; // 2 giây delay trước khi script bắt đầu chạy
-    const TIMEOUT_ELEMENT_STABLE = 2000; // 3 giây
+    const INITIAL_SCRIPT_DELAY = 1000; // 1 giây delay trước khi script bắt đầu chạy
+    const TIMEOUT_ELEMENT_STABLE = 2000; // 2 giây
     const INTERVAL_ELEMENT_STABLE = 500; // 0.5 giây
 
     const COOLDOWN_BUFFER_MS = 2000; // 2 giây đệm thêm sau khi hồi chiêu kết thúc

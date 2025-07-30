@@ -15,13 +15,13 @@
     // CẤU HÌNH CÁC BIẾN THỜI GIAN
     // ===============================================
 
-    const INITIAL_SCRIPT_DELAY = 2000; // 2 giây delay trước khi script bắt đầu chạy
-    const TIMEOUT_ELEMENT_STABLE = 3000; // 3 giây
+    const INITIAL_SCRIPT_DELAY = 1000; // 2 giây delay trước khi script bắt đầu chạy
+    const TIMEOUT_ELEMENT_STABLE = 2000; // 3 giây
     const INTERVAL_ELEMENT_STABLE = 500; // 0.5 giây
 
     const COOLDOWN_BUFFER_MS = 2000; // 2 giây đệm thêm sau khi hồi chiêu kết thúc
     const DELAY_BEFORE_CLICK = 1000; // 1 giây độ trễ trước khi thực hiện click
-    const CHECK_INTERVAL_AFTER_ACTION_MS = 5000; // Kiểm tra lại mỗi 5 giây sau khi click hoặc nếu không có cooldown/lỗi tìm kiếm element
+    const CHECK_INTERVAL_AFTER_ACTION_MS = 3000; // Kiểm tra lại mỗi 3 giây sau khi click hoặc nếu không có cooldown/lỗi tìm kiếm element
 
     // ===============================================
     // CẤU HÌNH BAN ĐẦU VÀ BIẾN TOÀN CỤC

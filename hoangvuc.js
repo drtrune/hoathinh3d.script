@@ -23,7 +23,7 @@
     // Thời gian đệm thêm sau khi hồi chiêu kết thúc (ms)
     const COOLDOWN_BUFFER_MS = 2000; // 2 giây
     // Thời gian tối đa chờ hộp thoại đóng (ms)
-    const TIMEOUT_MODAL_CLOSE = 6000; // 6 giây
+    const TIMEOUT_MODAL_CLOSE = 10000; // 10 giây
     // Khoảng thời gian giữa các lần kiểm tra khi chờ hộp thoại đóng (ms)
     const INTERVAL_MODAL_CLOSE = 300; // 0.3 giây
 
@@ -36,7 +36,7 @@
     const DELAY_BETWEEN_RETRIES_LONG = 1000; // 1 giây
 
     // Thời gian tối đa chờ nút nhận thưởng khi khởi động (ms)
-    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 3000; // 3 giây
+    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 2000; // 2 giây
 
 
     // ===============================================

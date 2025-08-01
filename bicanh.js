@@ -1,29 +1,28 @@
 // ==UserScript==
-// @name          HH3D Bí Cảnh Tông Môn
-// @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       1.7
-// @description   Tự động khiêu chiến và tấn công boss trong Bí Cảnh Tông Môn. Tích hợp UI nút toggle, hiển thị trạng thái, tạm dừng khi hết lượt, và tự động tiếp tục khi có lượt mới.
-// @author        Dr.Trune
-// @match         https://hoathinh3d.gg/bi-canh-tong-mon*
-// @grant         none
+// @name         HH3D Bí Cảnh Tông Môn
+// @namespace    https://github.com/drtrune/hoathinh3d.script
+// @version      1.8
+// @description  Tự động khiêu chiến và tấn công boss trong Bí Cảnh Tông Môn. Tích hợp UI nút toggle, hiển thị trạng thái, tạm dừng khi hết lượt.
+// @author       Dr.Trune
+// @match        https://hoathinh3d.gg/bi-canh-tong-mon*
+// @grant        none
 // ==/UserScript==
 
 (function() {
     'use strict';
-
+    
     // ===============================================
     // CẤU HÌNH CÁC BIẾN THỜI GIAN
     // ===============================================
 
-    const INITIAL_SCRIPT_DELAY = 3000; // 3 giây delay trước khi script bắt đầu chạy
-    const TIMEOUT_ELEMENT_STABLE = 5000; // 5 giây chờ element ổn định/xuất hiện
-    const INTERVAL_ELEMENT_STABLE = 500; // 0.5 giây kiểm tra element
-
-    const COOLDOWN_BUFFER_MS = 2000; // 2 giây đệm thêm sau khi hồi chiêu kết thúc
-    const DELAY_BEFORE_CLICK = 500; // 0.5 giây độ trễ trước khi thực hiện click
-    const DELAY_AFTER_ATTACK = 2000; // 2 giây độ trễ sau khi tấn công trước khi click Trở lại
-    const CHECK_INTERVAL_AFTER_ACTION_MS = 3000; // Kiểm tra lại mỗi 3 giây sau khi hoàn tất 1 chu trình hoặc không tìm thấy button
-    const IDLE_CHECK_INTERVAL_MS = 10000; // 10s: Khoảng thời gian kiểm tra khi script đang "nghỉ" (hết lượt hoặc chờ cooldown)
+    const INITIAL_SCRIPT_DELAY = 1000;
+    const TIMEOUT_ELEMENT_STABLE = 10000;
+    const INTERVAL_ELEMENT_STABLE = 500;
+    const COOLDOWN_BUFFER_MS = 2000;
+    const DELAY_BEFORE_CLICK = 500;
+    const DELAY_AFTER_ATTACK = 2000;
+    const CHECK_INTERVAL_AFTER_ACTION_MS = 3000;
+    const IDLE_CHECK_INTERVAL_MS = 10000;
 
     // ===============================================
     // CẤU HÌNH BAN ĐẦU VÀ BIẾN TOÀN CỤC
@@ -31,9 +30,7 @@
 
     const AUTO_CLICK_TOGGLE_KEY = 'hh3dBiCanhAutoClickEnabled';
     let isUIMade = false;
-    let isScriptFullyInitialized = false;
-    let isScriptRunning = false; // Biến trạng thái để kiểm soát vòng lặp chính
-    let lastStopReason = ''; // Biến để lưu lý do dừng gần nhất
+    let isScriptRunning = false;
 
     let mainLoopTimeoutId = null;
     let scriptStatusElement = null;
@@ -47,16 +44,17 @@
             scriptStatusElement.textContent = `Trạng thái: ${message}`;
             scriptStatusElement.style.color = type === 'error' ? '#ff4d4d' : (type === 'warn' ? '#FFD700' : '#B0C4DE');
         }
-        if (type === 'warn') console.warn(`[HH3D Bí Cảnh] ${message}`);
-        else if (type === 'error') console.error(`[HH3D Bí Cảnh] ${message}`);
-        else if (type === 'info') console.info(`[HH3D Bí Cảnh] ${message}`);
-        else if (type === 'success') console.log(`%c[HH3D Bí Cảnh] ${message}`, 'color: #32CD32;');
-        else console.log(`[HH3D Bí Cảnh] ${message}`);
+        if (type === 'warn') console.warn(`%c[HH3D Bí Cảnh] ${message}`, 'color: yellow;');
+        else if (type === 'error') console.error(`%c[HH3D Bí Cảnh] ${message}`, 'color: red;');
+        else if (type === 'info') console.info(`%c[HH3D Bí Cảnh] ${message}`, 'color: lightblue;');
+        else if (type === 'success') console.log(`%c[HH3D Bí Cảnh] ${message}`, 'color: lightgreen;');
+        else console.log(`%c[HH3D Bí Cảnh] ${message}`, 'color: white;');
     }
 
     function waitForElementStable(selector, callback, timeout = TIMEOUT_ELEMENT_STABLE, interval = INTERVAL_ELEMENT_STABLE) {
         let startTime = Date.now();
         let foundElement = null;
+        let checkInterval = null;
 
         const checkElement = () => {
             foundElement = document.querySelector(selector);
@@ -64,14 +62,16 @@
 
             if (isVisible) {
                 clearInterval(checkInterval);
+                updateScriptStatus(`Đã tìm thấy phần tử "${selector}".`, 'success');
                 callback(foundElement);
             } else if (Date.now() - startTime >= timeout) {
                 clearInterval(checkInterval);
+                updateScriptStatus(`Hết thời gian chờ (${timeout}ms) để tìm phần tử "${selector}".`, 'warn');
                 callback(null);
             }
         };
 
-        const checkInterval = setInterval(checkElement, interval);
+        checkInterval = setInterval(checkElement, interval);
         checkElement();
     }
 
@@ -80,13 +80,9 @@
             updateScriptStatus(`Lỗi: Không click được ${elementName} (null).`, 'error');
             return false;
         }
-        if (element.offsetParent === null && !element.id.includes('button')) {
-             updateScriptStatus(`${elementName} không hiển thị hoặc không tương tác.`, 'warn');
-             return false;
-        }
 
+        updateScriptStatus(`Đang click ${elementName}...`, 'info');
         try {
-            updateScriptStatus(`Đang click ${elementName}...`);
             const mouseEvent = new MouseEvent('click', {
                 view: window, bubbles: true, cancelable: true
             });
@@ -109,11 +105,13 @@
     function getCooldownTimeFromButton(buttonElement) {
         if (buttonElement && buttonElement.classList.contains('disabled')) {
             const timeText = buttonElement.textContent.trim();
-            const match = timeText.match(/Còn (\d{1,2}):(\d{2})/); // Matches "Còn X:YY" or "Còn XX:YY"
+            const match = timeText.match(/Còn (\d{1,2}):(\d{2})/);
             if (match && match.length === 3) {
                 const minutes = parseInt(match[1], 10);
                 const seconds = parseInt(match[2], 10);
-                return (minutes * 60 + seconds) * 1000; // Convert to milliseconds
+                const totalMs = (minutes * 60 + seconds) * 1000;
+                updateScriptStatus(`Nút "Khiêu Chiến" đang hồi chiêu: ${minutes} phút ${seconds} giây.`, 'info');
+                return totalMs;
             }
         }
         return 0;
@@ -123,9 +121,11 @@
         const attackCountSpan = document.querySelector('div.attack-info-display span.attack-count');
         if (attackCountSpan) {
             const count = parseInt(attackCountSpan.textContent.trim(), 10);
+            updateScriptStatus(`Đã kiểm tra lượt đánh: ${count}.`, 'info');
             return isNaN(count) ? 0 : count;
         }
-        return 0; // Trả về 0 nếu không tìm thấy phần tử, coi như hết lượt
+        updateScriptStatus('Không tìm thấy phần tử hiển thị lượt đánh. Coi như đã hết lượt.', 'warn');
+        return 0;
     }
 
     function sleep(ms) {
@@ -146,45 +146,47 @@
 
     function getAutoClickStateFromStorage() {
         const storedState = localStorage.getItem(AUTO_CLICK_TOGGLE_KEY);
-        return storedState === null ? true : JSON.parse(storedState);
+        const state = storedState === null ? true : JSON.parse(storedState);
+        updateScriptStatus(`Trạng thái tự động từ bộ nhớ: ${state ? 'BẬT' : 'TẮT'}.`, 'info');
+        return state;
     }
 
     function setAutoClickStateInStorage(enabled) {
         localStorage.setItem(AUTO_CLICK_TOGGLE_KEY, JSON.stringify(enabled));
+        updateScriptStatus(`Đã lưu trạng thái tự động: ${enabled ? 'BẬT' : 'TẮT'}.`, 'info');
     }
 
     function updateToggleSwitchUI(enabled) {
         const toggleSwitch = document.getElementById('autoClickToggleSwitch');
         if (toggleSwitch) {
             toggleSwitch.checked = enabled;
+            updateScriptStatus(`Cập nhật nút gạt trên UI: ${enabled ? 'BẬT' : 'TẮT'}.`, 'info');
         }
     }
 
-    function stopMainLoop(reason = 'stopped_internally') {
+    function stopMainLoop(reason = 'Tạm dừng vì lỗi nội bộ') {
         if (mainLoopTimeoutId) {
             clearTimeout(mainLoopTimeoutId);
             mainLoopTimeoutId = null;
         }
         isScriptRunning = false;
-        lastStopReason = reason; // Lưu lý do dừng
-        // Thông báo sẽ được xử lý ở các hàm gọi stopMainLoop, hoặc khi observer kích hoạt
+        updateScriptStatus(`Đã dừng. Lý do: ${reason}`, 'warn');
     }
 
     function startMainLoopIfEnabled() {
         if (!getAutoClickStateFromStorage()) {
-            updateScriptStatus('Tự động tấn công đang TẮT. Bật để bắt đầu.', 'info');
-            stopMainLoop('disabled_by_user_pref'); // Đảm bảo vòng lặp không chạy nếu trạng thái tắt
+            stopMainLoop('Tính năng tự động đã bị tắt');
+            return;
+        }
+        
+        if (isScriptRunning) {
+            updateScriptStatus('Vòng lặp đã chạy. Bỏ qua lệnh khởi động.', 'info');
             return;
         }
 
-        if (!isScriptRunning) { // Chỉ bắt đầu nếu chưa chạy
-            isScriptRunning = true;
-            lastStopReason = ''; // Xóa lý do dừng khi bắt đầu lại
-            updateScriptStatus('Bắt đầu vòng lặp kiểm tra chính...', 'info');
-            checkAndClickBoss();
-        } else {
-            console.log('[HH3D Bí Cảnh] Vòng lặp chính đã chạy.');
-        }
+        isScriptRunning = true;
+        updateScriptStatus('Bắt đầu vòng lặp kiểm tra...', 'info');
+        checkAndClickBoss();
     }
 
     // ===============================================
@@ -192,28 +194,15 @@
     // ===============================================
 
     async function checkAndClickBoss() {
-        // Bước 1: Kiểm tra trạng thái tự động click
+        updateScriptStatus('--- Bắt đầu chu kỳ kiểm tra mới ---', 'info');
         if (!getAutoClickStateFromStorage() || !isScriptRunning) {
-            // Khi dừng do người dùng tắt preference hoặc isScriptRunning bị false từ đâu đó
-            if (lastStopReason === 'disabled_by_user_pref') {
-                updateScriptStatus('Tự động tấn công đang TẮT. Bỏ qua.', 'info');
-            } else if (lastStopReason === 'stopped_by_user_api') {
-                 updateScriptStatus('Script đã dừng bởi người dùng.', 'info');
-            } else if (lastStopReason === 'no_attack_count_on_start') {
-                // Đã xử lý ở bước 2, không cần thông báo lại ở đây
-            } else {
-                 // Đây là trường hợp dừng nội bộ không rõ ràng, có thể do isScriptRunning bị false bất ngờ
-                 updateScriptStatus('Script không hoạt động. Đã dừng nội bộ.', 'info');
-            }
-            stopMainLoop('checked_inactive'); // Dừng chính thức nếu chưa dừng
+            stopMainLoop('Đã dừng giữa chừng');
             return;
         }
 
-        // Bước 2: Kiểm tra số lượt đánh còn lại
         const currentAttackCount = getAttackCount();
         if (currentAttackCount <= 0) {
-            updateScriptStatus('Đã hết lượt đánh. Tạm dừng tấn công.', 'warn');
-            stopMainLoop('no_attack_count'); // Đánh dấu lý do dừng
+            stopMainLoop('Đã hết lượt đánh');
             return;
         }
 
@@ -226,65 +215,63 @@
             if (isButtonDisabled && remainingMilliseconds > 0) {
                 const delayToNextCheck = remainingMilliseconds + COOLDOWN_BUFFER_MS;
                 const nextCheckTime = new Date(Date.now() + delayToNextCheck);
-                updateScriptStatus(`Nút Khiêu Chiến đang hồi chiêu. Sẽ kiểm tra lại vào ${formatTimeForDisplay(nextCheckTime.getTime())}.`, 'info');
+                updateScriptStatus(`Nút Khiêu Chiến đang hồi chiêu. Chờ đến ${formatTimeForDisplay(nextCheckTime.getTime())}.`, 'info');
                 mainLoopTimeoutId = setTimeout(checkAndClickBoss, delayToNextCheck);
             } else if (!isButtonDisabled) {
-                updateScriptStatus('Nút Khiêu Chiến đã sẵn sàng. Đang click...', 'info');
+                updateScriptStatus('Nút Khiêu Chiến đã sẵn sàng. Tấn công!', 'success');
                 await sleep(DELAY_BEFORE_CLICK);
                 if (safeClick(challengeBossBtn, 'nút "Khiêu Chiến"')) {
-                    updateScriptStatus('Đã click Khiêu Chiến. Đang chờ nút Tấn Công...', 'info');
+                    updateScriptStatus('Đã click Khiêu Chiến. Chờ nút "Tấn Công" xuất hiện...', 'info');
                     waitForElementStable('button#attack-boss-btn.attack-button', async (attackBossBtn) => {
                         if (!getAutoClickStateFromStorage() || !isScriptRunning) {
-                            updateScriptStatus('Script đã bị dừng trong lúc chờ. Bỏ qua.', 'info');
-                            stopMainLoop('stopped_during_wait');
+                            stopMainLoop('Đã dừng giữa chừng');
                             return;
                         }
                         if (attackBossBtn) {
+                            updateScriptStatus('Nút "Tấn Công" đã xuất hiện.', 'success');
                             await sleep(DELAY_BEFORE_CLICK);
                             if (safeClick(attackBossBtn, 'nút "Tấn Công"')) {
-                                updateScriptStatus('Đã click Tấn Công. Chờ để trở lại...', 'success');
+                                updateScriptStatus('Đã click Tấn Công. Chờ trận đánh kết thúc...', 'info');
                                 await sleep(DELAY_AFTER_ATTACK);
                                 waitForElementStable('button#back-button.back-button', async (backButton) => {
                                     if (!getAutoClickStateFromStorage() || !isScriptRunning) {
-                                        updateScriptStatus('Script đã bị dừng trong lúc chờ. Bỏ qua.', 'info');
-                                        stopMainLoop('stopped_during_wait');
+                                        stopMainLoop('Đã dừng giữa chừng');
                                         return;
                                     }
                                     if (backButton) {
                                         if (safeClick(backButton, 'nút "Trở lại"')) {
-                                            updateScriptStatus('Đã trở lại. Chu trình hoàn tất. Kiểm tra lại lượt đánh.', 'info');
-                                            // Sau khi trở lại, kiểm tra lại lượt đánh ngay lập tức
+                                            updateScriptStatus('Trận đánh kết thúc. Trở lại menu.', 'success');
                                             const finalAttackCount = getAttackCount();
                                             if (finalAttackCount <= 0) {
-                                                updateScriptStatus('Đã hết lượt đánh sau khi tấn công. Tạm dừng.', 'warn');
-                                                stopMainLoop('no_attack_count_after_last_attack'); // Đánh dấu lý do dừng
+                                                stopMainLoop('Đã hết lượt đánh');
                                             } else {
+                                                updateScriptStatus('Còn lượt đánh. Chuẩn bị chu kỳ mới sau 3 giây.', 'info');
                                                 mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
                                             }
                                         } else {
-                                            updateScriptStatus('Không thể click nút Trở lại. Sẽ thử lại vòng lặp chính.', 'warn');
+                                            updateScriptStatus('Không click được nút Trở lại. Sẽ thử lại.', 'warn');
                                             mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
                                         }
                                     } else {
-                                        updateScriptStatus('Không tìm thấy nút Trở lại. Sẽ thử lại vòng lặp chính.', 'warn');
+                                        updateScriptStatus('Không tìm thấy nút Trở lại. Sẽ thử lại.', 'warn');
                                         mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
                                     }
                                 }, 5000);
                             } else {
-                                updateScriptStatus('Không thể click nút Tấn Công. Sẽ thử lại vòng lặp chính.', 'warn');
+                                updateScriptStatus('Không click được nút Tấn Công. Sẽ thử lại.', 'warn');
                                 mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
                             }
                         } else {
-                            updateScriptStatus('Không tìm thấy nút Tấn Công trong modal. Sẽ thử lại.', 'warn');
+                            updateScriptStatus('Hết thời gian chờ nút Tấn Công. Sẽ thử lại.', 'warn');
                             mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
                         }
                     }, 10000);
                 } else {
-                    updateScriptStatus('Không thể click nút Khiêu Chiến. Sẽ thử lại sau.', 'warn');
+                    updateScriptStatus('Không click được nút Khiêu Chiến. Sẽ thử lại.', 'warn');
                     mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
                 }
             } else {
-                updateScriptStatus('Nút Khiêu Chiến đang trong trạng thái không xác định. Sẽ kiểm tra lại.', 'warn');
+                updateScriptStatus('Nút Khiêu Chiến đang ở trạng thái không xác định. Sẽ kiểm tra lại.', 'warn');
                 mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
             }
         } else {
@@ -310,6 +297,7 @@
             return;
         }
 
+        console.log('[HH3D Bí Cảnh] Bắt đầu tạo UI.');
         addStyle(`
             #hh3dBiCanhConfig {
                 background: rgba(40, 44, 52, 0.9);
@@ -344,22 +332,17 @@
                 color: #ADD8E6;
                 white-space: nowrap;
             }
-            /* Styles for the toggle switch */
             .switch {
                 position: relative;
                 display: inline-block;
-                width: 38px; /* Adjusted width */
-                height: 22px; /* Adjusted height */
+                width: 38px;
+                height: 22px;
             }
-
-            /* Hide default HTML checkbox */
             .switch input {
                 opacity: 0;
                 width: 0;
                 height: 0;
             }
-
-            /* The slider */
             .slider {
                 position: absolute;
                 cursor: pointer;
@@ -370,36 +353,31 @@
                 background-color: #ccc;
                 -webkit-transition: .4s;
                 transition: .4s;
-                border-radius: 22px; /* Makes it round */
+                border-radius: 22px;
             }
-
             .slider:before {
                 position: absolute;
                 content: "";
-                height: 16px; /* Adjusted height */
-                width: 16px; /* Adjusted width */
-                left: 3px; /* Adjusted position */
-                bottom: 3px; /* Adjusted position */
+                height: 16px;
+                width: 16px;
+                left: 3px;
+                bottom: 3px;
                 background-color: white;
                 -webkit-transition: .4s;
                 transition: .4s;
-                border-radius: 50%; /* Makes the circle */
+                border-radius: 50%;
             }
-
             input:checked + .slider {
-                background-color: #4CAF50; /* Green when checked */
+                background-color: #4CAF50;
             }
-
             input:focus + .slider {
                 box-shadow: 0 0 1px #4CAF50;
             }
-
             input:checked + .slider:before {
-                -webkit-transform: translateX(16px); /* Adjusted translation */
-                -ms-transform: translateX(16px); /* Adjusted translation */
-                transform: translateX(16px); /* Adjusted translation */
+                -webkit-transform: translateX(16px);
+                -ms-transform: translateX(16px);
+                transform: translateX(16px);
             }
-
             #hh3dBiCanhConfig #scriptStatus {
                 font-size: 11px;
                 color: #B0C4DE;
@@ -437,113 +415,36 @@
                     const isChecked = event.target.checked;
                     setAutoClickStateInStorage(isChecked);
                     if (isChecked) {
+                        updateScriptStatus('Người dùng đã bật tự động tấn công. Bắt đầu...', 'info');
                         startMainLoopIfEnabled();
                     } else {
-                        // Khi người dùng tắt thủ công
-                        stopMainLoop('user_toggled_off');
-                        updateScriptStatus('Script đã dừng thủ công.', 'info');
+                        stopMainLoop('Người dùng đã dừng thủ công');
                     }
                 });
 
                 isUIMade = true;
-                updateScriptStatus('Giao diện đã sẵn sàng.', 'info');
+                updateScriptStatus('Giao diện đã sẵn sàng.', 'success');
             } else if (!targetDiv && !isUIMade) {
                 console.warn('[HH3D Bí Cảnh] Không tìm thấy div.attack-info-display để chèn UI. UI có thể không hiển thị.');
             }
-        }, 10000);
+        }, TIMEOUT_ELEMENT_STABLE);
     }
 
     // ===============================================
     // KHỞI TẠO SCRIPT & VÒNG LẶP CHÍNH
     // ===============================================
 
-    async function initializeScript() {
-        if (isScriptFullyInitialized) {
-            console.log('[HH3D Bí Cảnh] Script đã được khởi tạo hoàn chỉnh. Bỏ qua.');
-            return;
-        }
-        isScriptFullyInitialized = true;
-
-        updateScriptStatus('Đang khởi tạo script và UI...', 'info');
-
-        await sleep(INITIAL_SCRIPT_DELAY);
-
+    function initializeScript() {
+        console.log('[HH3D Bí Cảnh] Bắt đầu khởi tạo script...');
         createMainUI();
 
-        waitForElementStable('#scriptStatus', () => {
-            startMainLoopIfEnabled(); // Sẽ tự quyết định thông báo dựa trên getAutoClickStateFromStorage()
-        }, 5000);
+        setTimeout(() => {
+            waitForElementStable('#scriptStatus', () => {
+                startMainLoopIfEnabled();
+            }, TIMEOUT_ELEMENT_STABLE);
+        }, INITIAL_SCRIPT_DELAY);
     }
 
     // --- Entry Point ---
-    window.addEventListener('DOMContentLoaded', () => {
-        initializeScript();
-    });
-
-    const observer = new MutationObserver((mutations, obs) => {
-        if (!isScriptFullyInitialized) {
-            if (document.querySelector('button#challenge-boss-btn') || document.querySelector('div.attack-info-display')) {
-                initializeScript();
-                return;
-            }
-        }
-
-        if (getAutoClickStateFromStorage()) {
-            const currentAttackCount = getAttackCount();
-            const challengeBossBtn = document.querySelector('button#challenge-boss-btn');
-
-            if (currentAttackCount > 0 && challengeBossBtn && !challengeBossBtn.hasAttribute('disabled')) {
-                if (!isScriptRunning) {
-                    updateScriptStatus('Phát hiện lượt đánh mới/nút sẵn sàng. Tiếp tục tấn công...', 'info');
-                    startMainLoopIfEnabled();
-                }
-            } else if (currentAttackCount <= 0) {
-                if (isScriptRunning) { // Đảm bảo dừng nếu đang chạy và hết lượt
-                    stopMainLoop('no_attack_count_observer');
-                }
-                // Luôn cập nhật trạng thái hết lượt, kể cả khi script đã dừng
-                if (scriptStatusElement && (lastStopReason === 'no_attack_count' || lastStopReason === 'no_attack_count_after_last_attack' || lastStopReason === 'no_attack_count_observer')) {
-                     updateScriptStatus('Đã hết lượt đánh. Tạm dừng tấn công. Vui lòng nạp thêm lượt.', 'warn');
-                } else if (scriptStatusElement && !isScriptRunning && lastStopReason !== 'user_toggled_off' && lastStopReason !== 'stopped_by_user_api') {
-                     // Trường hợp hết lượt nhưng chưa có thông báo chính xác, hoặc có lỗi logic nào đó
-                     updateScriptStatus('Đã hết lượt đánh. Script tạm dừng chờ lượt mới.', 'warn');
-                }
-            } else if (challengeBossBtn && challengeBossBtn.hasAttribute('disabled') && getCooldownTimeFromButton(challengeBossBtn) === 0) {
-                if (!isScriptRunning) {
-                     updateScriptStatus('Nút Khiêu Chiến không xác định trạng thái, thử kiểm tra lại...', 'info');
-                     startMainLoopIfEnabled();
-                }
-            }
-        } else {
-            // Nếu người dùng đã tắt auto trong localStorage, đảm bảo vòng lặp dừng và UI khớp
-            if (isScriptRunning) {
-                stopMainLoop('disabled_by_user_pref_observer');
-                updateScriptStatus('Tự động tấn công đang TẮT. Bật để bắt đầu.', 'info');
-            }
-        }
-    });
-
-    waitForElementStable('div.attack-info-display', (el) => {
-        if (el) {
-            observer.observe(el, { childList: true, subtree: true, characterData: true, attributes: true });
-            waitForElementStable('button#challenge-boss-btn', (btn) => {
-                 if (btn) {
-                     observer.observe(btn, { attributes: true, childList: true, subtree: true });
-                 }
-            }, 5000);
-        } else {
-            console.warn('[HH3D Bí Cảnh] Không tìm thấy div.attack-info-display để quan sát. Quan sát toàn bộ body.');
-            observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
-        }
-    }, 15000);
-
-    // Hàm public để dừng script thủ công (ví dụ: từ console trình duyệt)
-    window.stopAutoBiCanhScript = () => {
-        stopMainLoop('stopped_by_user_api');
-        setAutoClickStateInStorage(false);
-        updateToggleSwitchUI(false);
-        updateScriptStatus('Script đã dừng bởi người dùng.', 'info');
-        console.log('[HH3D Bí Cảnh] Script đã được dừng bởi người dùng.');
-    };
-
+    initializeScript();
 })();

@@ -22,7 +22,7 @@
     const DELAY_BEFORE_CLICK = 500;
     const DELAY_AFTER_ATTACK = 2000;
     const CHECK_INTERVAL_AFTER_ACTION_MS = 3000;
-    const IDLE_CHECK_INTERVAL_MS = 10000;
+    const IDLE_CHECK_INTERVAL_MS = 5000;
 
     // ===============================================
     // CẤU HÌNH BAN ĐẦU VÀ BIẾN TOÀN CỤC

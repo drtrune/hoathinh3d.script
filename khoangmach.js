@@ -211,7 +211,6 @@
             const maxTuVi = parseInt(match[2], 10);
             console.log(`[Auto Khoáng Mạch] Current Tu Vi: ${currentTuVi} / ${maxTuVi}`);
             if (currentTuVi >= maxTuVi) {
-                updateStatus('Tu Vi đã đạt tối đa. Tự động dừng.');
                 return true;
             }
         } else {
@@ -548,6 +547,7 @@
         // Thêm chức năng kiểm tra Tu Vi tại đây
         if (checkMaxTuVi()) {
             stopAuto();
+            updateStatus('Tu Vi đã đạt tối đa. Tự động dừng.');
             return;
         }
 

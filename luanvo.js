@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Luận Võ Đường
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      2.1
+// @version      2.2
 // @description  Tự động gia nhập trận đấu, bật auto-accept, nhận thưởng và rút ngắn thời gian chờ trong Luận Võ Đường
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/luan-vo-duong*
@@ -27,12 +27,24 @@
     const DELAY_BETWEEN_RETRIES_SHORT = 1000; // 1 giây: Độ trễ ngắn khi thử lại hành động
     const DELAY_BETWEEN_RETRIES_LONG = 3000; // 3 giây: Độ trễ dài hơn khi không tìm thấy phần tử/hàm chính
 
-    // Cấu hình cho tính năng Speed Up
-    const SHORTENED_DELAY_SETTIMEOUT = 200; // 200ms cho setTimeout
-    const SHORTENED_INTERVAL_DELAY = 200;    // 200ms cho setInterval
+    // Cấu hình cho tính năng Speed Up (Slider 3 vị trí)
+    const SPEED_MODE_NORMAL = 0; // Vị trí 1: Bình thường
+    const SPEED_MODE_MEDIUM = 1; // Vị trí 2: Nhanh vừa
+    const SPEED_MODE_FAST = 2;   // Vị trí 3: Nhanh tối đa
 
-    // Trạng thái chung của tính năng speed up (mặc định BẬT)
-    let speedUpActive = true;
+    // Thời gian cho setTimeout
+    const DELAY_SETTIMEOUT_NORMAL = 3000; // Delay gốc của game
+    const DELAY_SETTIMEOUT_MEDIUM = 500;  // Nhanh vừa
+    const DELAY_SETTIMEOUT_FAST = 200;    // Nhanh tối đa
+
+    // Thời gian cho setInterval
+    const INTERVAL_DELAY_NORMAL = 1000;   // Interval gốc của game
+    const INTERVAL_DELAY_MEDIUM = 600;    // Nhanh vừa
+    const INTERVAL_DELAY_FAST = 200;      // Nhanh tối đa
+
+    // Biến trạng thái speed up (đọc từ localStorage hoặc mặc định là Bình thường)
+    let speedUpMode = parseInt(localStorage.getItem('hh3d_lvd_speed_mode') || SPEED_MODE_NORMAL);
+    
     // Biến để theo dõi trạng thái khởi tạo chính của luồng Auto Join/Accept
     let hasInitializedMainFlow = false;
     // Biến mới: Theo dõi trạng thái đã nhận thưởng hoặc không có nút nhận thưởng
@@ -94,7 +106,7 @@
     }
 
     // ===============================================
-    // HÀM TIỆN ÍCH UI (CHO NÚT GẠT SPEED UP)
+    // HÀM TIỆN ÍCH UI (CHO SLIDER SPEED UP)
     // ===============================================
 
     function addStyle(css) {
@@ -104,75 +116,145 @@
         document.head.appendChild(style);
     }
 
-    function createToggleSwitchUI() {
+    function createSpeedUpSliderUI() {
         addStyle(`
-            /* Container cho nút gạt và nhãn */
-            .speed-up-toggle-container {
-                margin-top: 10px;
+                        /* Container cho slider và nhãn */
+            .speed-up-slider-container {
+                margin-top: 15px; /* Tăng khoảng cách so với các phần tử trên */
                 display: flex;
+                flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                gap: 10px;
+                gap: 5px;
                 color: #bbb;
                 font-size: 14px;
                 user-select: none;
                 width: 100%;
+                max-width: 250px; /* Giới hạn chiều rộng tổng thể của container */
+                margin-left: auto; /* Căn giữa container */
+                margin-right: auto;
+                padding: 10px;
+                border-radius: 8px;
+                background: rgba(0, 0, 0, 0.3); /* Nền hơi mờ, trong suốt nhẹ */
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Đổ bóng nhẹ cho container */
             }
-            .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
-            .switch input { opacity: 0; width: 0; height: 0; }
-            .slider {
-                position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-                background-color: #ccc; -webkit-transition: .4s; transition: .4s; border-radius: 24px;
+            .speed-up-slider-container label {
+                margin-bottom: 5px;
+                font-weight: bold;
+                color: #f0f0f0; /* Màu chữ sáng hơn cho nhãn chính */
             }
-            .slider:before {
-                position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px;
-                background-color: white; -webkit-transition: .4s; transition: .4s; border-radius: 50%;
+            .speed-up-slider {
+                -webkit-appearance: none; /* Ẩn giao diện mặc định của trình duyệt */
+                width: 90%; /* Chiều rộng của thanh trượt bên trong container */
+                height: 6px; /* Chiều cao thanh trượt mảnh hơn */
+                border-radius: 3px;
+                background: linear-gradient(to right, #28a745, #ffc107, #dc3545); /* Gradient màu đẹp mắt */
+                outline: none;
+                opacity: 0.9;
+                -webkit-transition: opacity .2s;
+                transition: opacity .2s;
             }
-            input:checked + .slider { background-color: #4CAF50; }
-            input:focus + .slider { box-shadow: 0 0 1px #4CAF50; }
-            input:checked + .slider:before {
-                -webkit-transform: translateX(20px); -ms-transform: translateX(20px); transform: translateX(20px);
+            .speed-up-slider:hover {
+                opacity: 1;
             }
-            .slider.round { border-radius: 24px; }
-            .slider.round:before { border-radius: 50%; }
+            /* Thiết kế nút kéo (thumb) cho Webkit (Chrome, Safari, Edge) */
+            .speed-up-slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 18px; /* Kích thước nút kéo */
+                height: 18px;
+                border-radius: 50%; /* Hình tròn */
+                background: #fff; /* Màu trắng cho nút kéo */
+                cursor: pointer;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4); /* Đổ bóng cho nút kéo */
+                border: 2px solid #28a745; /* Viền màu xanh lá */
+                transition: background .2s, border .2s;
+            }
+            .speed-up-slider::-webkit-slider-thumb:hover {
+                background: #f0f0f0;
+                border-color: #0056b3; /* Đổi màu viền khi hover */
+            }
+            /* Thiết kế nút kéo (thumb) cho Firefox */
+            .speed-up-slider::-moz-range-thumb {
+                width: 18px;
+                height: 18px;
+                border-radius: 50%;
+                background: #fff;
+                cursor: pointer;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+                border: 2px solid #28a745;
+                transition: background .2s, border .2s;
+            }
+            .speed-up-slider::-moz-range-thumb:hover {
+                background: #f0f0f0;
+                border-color: #0056b3;
+            }
+
+            /* Nhãn cho các vị trí */
+            .speed-up-labels {
+                display: flex;
+                justify-content: space-between;
+                width: 90%; /* Phù hợp với chiều rộng slider */
+                font-size: 11px; /* Nhãn nhỏ hơn */
+                color: #aaa; /* Màu nhãn nhẹ nhàng hơn */
+                margin-top: 5px;
+            }
+            .speed-up-labels span {
+                flex: 1; /* Chia đều không gian */
+                text-align: center;
+                white-space: nowrap; /* Đảm bảo nhãn không bị ngắt dòng */
+            }
+            .speed-up-labels span:first-child {
+                text-align: left; /* Nhãn đầu tiên căn trái */
+            }
+            .speed-up-labels span:last-child {
+                text-align: right; /* Nhãn cuối cùng căn phải */
+            }
+            }
         `);
 
         const targetElementSelector = '.auto-accept-label';
         waitForElementStable(targetElementSelector, (targetElement) => {
             if (targetElement) {
                 const container = document.createElement('div');
-                container.className = 'speed-up-toggle-container';
+                container.className = 'speed-up-slider-container';
 
                 const labelText = document.createElement('label');
-                labelText.textContent = 'Khiêu chiến nhanh';
-                labelText.htmlFor = 'speedUpToggleSwitch';
+                labelText.textContent = 'Chế độ Khiêu chiến nhanh';
+                labelText.htmlFor = 'speedUpSlider';
 
-                const switchWrapper = document.createElement('label');
-                switchWrapper.className = 'switch';
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.id = 'speedUpSlider';
+                slider.className = 'speed-up-slider';
+                slider.min = SPEED_MODE_NORMAL;
+                slider.max = SPEED_MODE_FAST;
+                slider.step = 1;
+                slider.value = speedUpMode;
 
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.id = 'speedUpToggleSwitch';
-                checkbox.checked = speedUpActive;
-                checkbox.addEventListener('change', (e) => {
-                    speedUpActive = e.target.checked;
-                    console.log(`%c[LVD - INFO] Chế độ "Khiêu chiến nhanh": ${speedUpActive ? 'Đã BẬT' : 'Đã TẮT'}.`,
+                const labelsDiv = document.createElement('div');
+                labelsDiv.className = 'speed-up-labels';
+                labelsDiv.innerHTML = `
+                    <span>Bình thường</span>
+                    <span>Nhanh</span>
+                `;
+
+                slider.addEventListener('input', (e) => {
+                    speedUpMode = parseInt(e.target.value);
+                    localStorage.setItem('hh3d_lvd_speed_mode', speedUpMode.toString());
+                    const modeNames = ['Bình thường', 'Nhanh vừa', 'Nhanh'];
+                    console.log(`%c[LVD - INFO] Chế độ "Khiêu chiến nhanh": ${modeNames[speedUpMode]}.`,
                                 'color: #8A2BE2;');
                 });
 
-                const slider = document.createElement('span');
-                slider.className = 'slider round';
-
-                switchWrapper.appendChild(checkbox);
-                switchWrapper.appendChild(slider);
-
                 container.appendChild(labelText);
-                container.appendChild(switchWrapper);
+                container.appendChild(slider);
+                container.appendChild(labelsDiv);
 
                 targetElement.parentNode.insertBefore(container, targetElement.nextSibling);
-                console.log('%c[LVD - INFO] Đã chèn nút gạt "Khiêu chiến nhanh".', 'color: lightgreen;');
+                console.log('%c[LVD - INFO] Đã chèn Slider "Khiêu chiến nhanh".', 'color: lightgreen;');
             } else {
-                console.warn('%c[LVD - CẢNH BÁO] Không tìm thấy ".auto-accept-label" để chèn nút gạt.', 'color: orange;');
+                console.warn('%c[LVD - CẢNH BÁO] Không tìm thấy ".auto-accept-label" để chèn slider.', 'color: orange;');
             }
         }, 10000); // Chờ 10 giây cho element .auto-accept-label
     }
@@ -186,19 +268,24 @@
         let actualDelay = delay;
         let intervened = false;
 
-        if (speedUpActive && delay === 3000 && typeof callback === 'function') {
+        // Chỉ can thiệp nếu chế độ không phải là Bình thường và delay phù hợp
+        if (speedUpMode !== SPEED_MODE_NORMAL && delay === DELAY_SETTIMEOUT_NORMAL && typeof callback === 'function') {
             const callbackString = callback.toString();
             if (callbackString.includes('o("timer")') && callbackString.includes('delete e.timeout')) {
                 const stack = new Error().stack;
                 if (stack && stack.includes('sweetalert2.min.js')) {
-                    actualDelay = SHORTENED_DELAY_SETTIMEOUT;
+                    if (speedUpMode === SPEED_MODE_MEDIUM) {
+                        actualDelay = DELAY_SETTIMEOUT_MEDIUM;
+                    } else if (speedUpMode === SPEED_MODE_FAST) {
+                        actualDelay = DELAY_SETTIMEOUT_FAST;
+                    }
                     intervened = true;
                 }
             }
         }
 
         if (intervened) {
-            console.log(`%c[LVD - SPEED UP] Rút ngắn delay từ ${delay}ms xuống ${actualDelay}ms.`, 'color: #FFA500;');
+            console.log(`%c[LVD - SPEED UP] Rút ngắn delay từ ${delay}ms xuống ${actualDelay}ms (chế độ: ${speedUpMode}).`, 'color: #FFA500;');
         }
         return originalSetTimeout(callback, actualDelay, ...args);
     };
@@ -208,19 +295,24 @@
         let actualDelay = delay;
         let intervened = false;
 
-        if (speedUpActive && delay === 1000 && typeof callback === 'function') {
+        // Chỉ can thiệp nếu chế độ không phải là Bình thường và delay phù hợp
+        if (speedUpMode !== SPEED_MODE_NORMAL && delay === INTERVAL_DELAY_NORMAL && typeof callback === 'function') {
             const callbackString = callback.toString();
             if (callbackString.includes('--y>0?') && callbackString.includes('clearInterval(window.countdownInterval)') && callbackString.includes('t()')) {
                  const stack = new Error().stack;
                  if (stack && stack.includes('luan-vo.min.js')) {
-                    actualDelay = SHORTENED_INTERVAL_DELAY;
+                    if (speedUpMode === SPEED_MODE_MEDIUM) {
+                        actualDelay = INTERVAL_DELAY_MEDIUM;
+                    } else if (speedUpMode === SPEED_MODE_FAST) {
+                        actualDelay = INTERVAL_DELAY_FAST;
+                    }
                     intervened = true;
                  }
             }
         }
 
         if (intervened) {
-            console.log(`%c[LVD - SPEED UP] Tăng tốc interval từ ${delay}ms xuống ${actualDelay}ms.`, 'color: #FFA500;');
+            console.log(`%c[LVD - SPEED UP] Tăng tốc interval từ ${delay}ms xuống ${actualDelay}ms (chế độ: ${speedUpMode}).`, 'color: #FFA500;');
         }
         return originalSetInterval(callback, actualDelay, ...args);
     };
@@ -240,48 +332,8 @@
 
         console.log(`%c[HH3D LVD] Bắt đầu chu trình tự động hóa chính.`, 'background: #333; color: #f0f0f0;');
 
-        // Bước 1: Luôn ưu tiên bật auto-accept
-        tryToggleAutoAccept();
-    }
-
-    /**
-     * Cố gắng bật chế độ auto-accept. Nếu không tìm thấy, chuyển sang bước Nhận Thưởng.
-     */
-    function tryToggleAutoAccept() {
-        if (isRewardClaimedOrHandled) { // Nếu đã nhận thưởng, không cần làm gì nữa
-            console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý. Bỏ qua bật Auto Accept.`, 'color: #808080;');
-            return;
-        }
-
-        console.log(`%c[LVD - AUTO] Đang tìm công tắc "auto_accept_toggle".`, 'color: #98FB98;');
-        const autoAcceptToggleSelector = 'input[type="checkbox"]#auto_accept_toggle';
-
-        waitForElementStable(autoAcceptToggleSelector, (toggleInput) => {
-            if (isRewardClaimedOrHandled) { // Kiểm tra lại sau khi chờ
-                console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý trong khi chờ Auto Accept.`, 'color: #808080;');
-                return;
-            }
-
-            if (toggleInput) {
-                if (!toggleInput.checked) {
-                    console.log(`%c[LVD - AUTO] "auto_accept_toggle" CHƯA BẬT. Đang click...`, 'color: lightgreen;');
-                    setTimeout(() => {
-                        safeClick(toggleInput, 'công tắc "auto_accept_toggle"');
-                        console.log(`%c[LVD - AUTO] "auto_accept_toggle" ĐÃ BẬT.`, 'color: limegreen;');
-                        // Sau khi bật auto accept, chuyển sang kiểm tra nhận thưởng
-                        setTimeout(tryReceiveReward, DELAY_AFTER_FUNCTION_CALL);
-                    }, DELAY_BEFORE_CLICK);
-                } else {
-                    console.log(`%c[LVD - AUTO] "auto_accept_toggle" ĐÃ BẬT SẴN.`, 'color: limegreen;');
-                    // Nếu đã bật, chuyển sang kiểm tra nhận thưởng
-                    tryReceiveReward();
-                }
-            } else {
-                console.log(`%c[LVD - AUTO] Không tìm thấy "auto_accept_toggle". Chuyển sang kiểm tra Nhận Thưởng.`, 'color: grey;');
-                // Nếu không tìm thấy công tắc, có thể đã ở màn hình khác, thử nhận thưởng hoặc gia nhập
-                tryReceiveReward();
-            }
-        }, 3000, INTERVAL_ELEMENT_STABLE);
+        // Bước 1: Luôn ưu tiên nhận thưởng trước
+        tryReceiveReward();
     }
 
     /**
@@ -392,15 +444,55 @@
                 setTimeout(() => {
                     if (safeClick(confirmButton, 'nút "Tham gia" (xác nhận)')) {
                         console.log(`%c[LVD - AUTO] Đã click "Tham gia". Chờ trang tải lại.`, 'color: limegreen;');
+                        // Sau khi xác nhận gia nhập, chuyển sang bật auto-accept (nếu chưa bật)
+                        setTimeout(tryToggleAutoAccept, DELAY_AFTER_FUNCTION_CALL);
                     } else {
                         console.warn(`%c[LVD - AUTO] Click "Tham gia" thất bại. Thử lại sau.`, 'color: orange;');
                         setTimeout(confirmJoinBattle, DELAY_BETWEEN_RETRIES_SHORT);
                     }
                 }, DELAY_BEFORE_CLICK);
             } else {
-                console.warn(`%c[LVD - CẢNH BÁO] Không tìm thấy nút xác nhận "Tham gia". Chờ trang tải lại.`, 'color: grey;');
+                console.warn(`%c[LVD - CẢNH BÁO] Không tìm thấy nút xác nhận "Tham gia". Chờ trang tải lại hoặc chuyển sang bật Auto Accept.`, 'color: grey;');
+                // Nếu không tìm thấy nút xác nhận, có thể đã qua màn hình này, thử bật auto-accept
+                setTimeout(tryToggleAutoAccept, DELAY_AFTER_FUNCTION_CALL);
             }
         });
+    }
+
+    /**
+     * Cố gắng bật chế độ auto-accept.
+     */
+    function tryToggleAutoAccept() {
+        if (isRewardClaimedOrHandled) { // Nếu đã nhận thưởng, không cần làm gì nữa
+            console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý. Bỏ qua bật Auto Accept.`, 'color: #808080;');
+            return;
+        }
+
+        console.log(`%c[LVD - AUTO] Đang tìm công tắc "auto_accept_toggle".`, 'color: #98FB98;');
+        const autoAcceptToggleSelector = 'input[type="checkbox"]#auto_accept_toggle';
+
+        waitForElementStable(autoAcceptToggleSelector, (toggleInput) => {
+            if (isRewardClaimedOrHandled) { // Kiểm tra lại sau khi chờ
+                console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý trong khi chờ Auto Accept.`, 'color: #808080;');
+                return;
+            }
+
+            if (toggleInput) {
+                if (!toggleInput.checked) {
+                    console.log(`%c[LVD - AUTO] "auto_accept_toggle" CHƯA BẬT. Đang click...`, 'color: lightgreen;');
+                    setTimeout(() => {
+                        safeClick(toggleInput, 'công tắc "auto_accept_toggle"');
+                        console.log(`%c[LVD - AUTO] "auto_accept_toggle" ĐÃ BẬT.`, 'color: limegreen;');
+                        // Sau khi bật auto accept, chu trình chính hoàn tất.
+                    }, DELAY_BEFORE_CLICK);
+                } else {
+                    console.log(`%c[LVD - AUTO] "auto_accept_toggle" ĐÃ BẬT SẴN.`, 'color: limegreen;');
+                    // Nếu đã bật, chu trình chính hoàn tất.
+                }
+            } else {
+                console.log(`%c[LVD - AUTO] Không tìm thấy "auto_accept_toggle". Kết thúc chu trình tự động hóa chính.`, 'color: grey;');
+            }
+        }, 3000, INTERVAL_ELEMENT_STABLE);
     }
 
     // ===============================================
@@ -422,14 +514,13 @@
     }
 
     // Khởi tạo UI cho Speed Up
-    // Chờ DOMContentLoaded hoặc document sẵn sàng để đảm bảo các phần tử cần thiết cho UI có thể tìm thấy.
     console.log('%c[HH3D LVD] Đang khởi tạo UI Speed Up.', 'color: #8A2BE2;');
     window.addEventListener('DOMContentLoaded', () => {
-        createToggleSwitchUI();
+        createSpeedUpSliderUI();
     });
     // Fallback nếu DOMContentLoaded đã bắn trước khi script kịp gán listener
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        createToggleSwitchUI();
+        createSpeedUpSliderUI();
     }
 
     // MutationObserver (giữ nguyên nhưng không log chi tiết)

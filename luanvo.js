@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Luận Võ Đường
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      2.2
+// @version      2.3
 // @description  Tự động gia nhập trận đấu, bật auto-accept, nhận thưởng và rút ngắn thời gian chờ trong Luận Võ Đường
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/luan-vo-duong*
@@ -23,9 +23,9 @@
     const TIMEOUT_ELEMENT_STABLE = 5000; // 5 giây: Thời gian tối đa chờ một phần tử xuất hiện ổn định
     const INTERVAL_ELEMENT_STABLE = 500;  // 0.5 giây: Khoảng thời gian giữa các lần kiểm tra phần tử
     const DELAY_BEFORE_CLICK = 500;       // 0.5 giây: Độ trễ trước khi thực hiện click
-    const DELAY_AFTER_FUNCTION_CALL = 1500; // 1.5 giây: Độ trễ sau khi gọi hàm để UI kịp cập nhật
-    const DELAY_BETWEEN_RETRIES_SHORT = 1000; // 1 giây: Độ trễ ngắn khi thử lại hành động
-    const DELAY_BETWEEN_RETRIES_LONG = 3000; // 3 giây: Độ trễ dài hơn khi không tìm thấy phần tử/hàm chính
+    const DELAY_AFTER_FUNCTION_CALL = 500; // 0.5 giây: Độ trễ sau khi gọi hàm để UI kịp cập nhật
+    const DELAY_BETWEEN_RETRIES_SHORT = 500; // 0.5 giây: Độ trễ ngắn khi thử lại hành động
+    const DELAY_BETWEEN_RETRIES_LONG = 1000; // 1 giây: Độ trễ dài hơn khi không tìm thấy phần tử/hàm chính
 
     // Cấu hình cho tính năng Speed Up (Slider 3 vị trí)
     const SPEED_MODE_NORMAL = 0; // Vị trí 1: Bình thường
@@ -34,7 +34,7 @@
 
     // Thời gian cho setTimeout
     const DELAY_SETTIMEOUT_NORMAL = 3000; // Delay gốc của game
-    const DELAY_SETTIMEOUT_MEDIUM = 500;  // Nhanh vừa
+    const DELAY_SETTIMEOUT_MEDIUM = 600;  // Nhanh vừa
     const DELAY_SETTIMEOUT_FAST = 200;    // Nhanh tối đa
 
     // Thời gian cho setInterval
@@ -44,12 +44,13 @@
 
     // Biến trạng thái speed up (đọc từ localStorage hoặc mặc định là Bình thường)
     let speedUpMode = parseInt(localStorage.getItem('hh3d_lvd_speed_mode') || SPEED_MODE_NORMAL);
-    
+
     // Biến để theo dõi trạng thái khởi tạo chính của luồng Auto Join/Accept
     let hasInitializedMainFlow = false;
-    // Biến mới: Theo dõi trạng thái đã nhận thưởng hoặc không có nút nhận thưởng
+    // Biến theo dõi trạng thái đã nhận thưởng hoặc không có nút nhận thưởng
     let isRewardClaimedOrHandled = false;
-
+    // Biến đếm số lần thử lại gia nhập
+    let joinBattleRetryCount = 0;
     // Lưu trữ các hàm setTimeout/setInterval gốc
     const originalSetTimeout = window.setTimeout;
     const originalSetInterval = window.setInterval;
@@ -116,148 +117,215 @@
         document.head.appendChild(style);
     }
 
-    function createSpeedUpSliderUI() {
-        addStyle(`
-                        /* Container cho slider và nhãn */
-            .speed-up-slider-container {
-                margin-top: 15px; /* Tăng khoảng cách so với các phần tử trên */
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 5px;
-                color: #bbb;
-                font-size: 14px;
-                user-select: none;
-                width: 100%;
-                max-width: 250px; /* Giới hạn chiều rộng tổng thể của container */
-                margin-left: auto; /* Căn giữa container */
-                margin-right: auto;
-                padding: 10px;
-                border-radius: 8px;
-                background: rgba(0, 0, 0, 0.3); /* Nền hơi mờ, trong suốt nhẹ */
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Đổ bóng nhẹ cho container */
-            }
-            .speed-up-slider-container label {
-                margin-bottom: 5px;
-                font-weight: bold;
-                color: #f0f0f0; /* Màu chữ sáng hơn cho nhãn chính */
-            }
-            .speed-up-slider {
-                -webkit-appearance: none; /* Ẩn giao diện mặc định của trình duyệt */
-                width: 90%; /* Chiều rộng của thanh trượt bên trong container */
-                height: 6px; /* Chiều cao thanh trượt mảnh hơn */
-                border-radius: 3px;
-                background: linear-gradient(to right, #28a745, #ffc107, #dc3545); /* Gradient màu đẹp mắt */
-                outline: none;
-                opacity: 0.9;
-                -webkit-transition: opacity .2s;
-                transition: opacity .2s;
-            }
-            .speed-up-slider:hover {
-                opacity: 1;
-            }
-            /* Thiết kế nút kéo (thumb) cho Webkit (Chrome, Safari, Edge) */
-            .speed-up-slider::-webkit-slider-thumb {
-                -webkit-appearance: none;
-                appearance: none;
-                width: 18px; /* Kích thước nút kéo */
-                height: 18px;
-                border-radius: 50%; /* Hình tròn */
-                background: #fff; /* Màu trắng cho nút kéo */
-                cursor: pointer;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4); /* Đổ bóng cho nút kéo */
-                border: 2px solid #28a745; /* Viền màu xanh lá */
-                transition: background .2s, border .2s;
-            }
-            .speed-up-slider::-webkit-slider-thumb:hover {
-                background: #f0f0f0;
-                border-color: #0056b3; /* Đổi màu viền khi hover */
-            }
-            /* Thiết kế nút kéo (thumb) cho Firefox */
-            .speed-up-slider::-moz-range-thumb {
-                width: 18px;
-                height: 18px;
-                border-radius: 50%;
-                background: #fff;
-                cursor: pointer;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-                border: 2px solid #28a745;
-                transition: background .2s, border .2s;
-            }
-            .speed-up-slider::-moz-range-thumb:hover {
-                background: #f0f0f0;
-                border-color: #0056b3;
+function createSpeedUpSliderUI() {
+    addStyle(`
+        /* Container cha chứa thanh trượt và các chỉ báo */
+        .slider-control-container {
+            position: relative;
+            width: 100%;
+            height: 20px; /* Chiều cao cố định để chứa slider và indicators */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Container tổng thể */
+        .speed-up-slider-container {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            color: #bbb;
+            font-size: 14px;
+            user-select: none;
+            width: 100%;
+            max-width: 320px;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 10px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .speed-up-slider-container label {
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #f0f0f0;
+        }
+
+        /* Hàng chứa thanh trượt và các nhãn */
+        .slider-row {
+            width: 95%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        /* Container cho mỗi nhãn (để căn giữa) */
+        .label-wrapper {
+            min-width: 80px;
+            text-align: center;
+        }
+
+        /* Thanh trượt */
+        .speed-up-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%; /* Đặt chiều rộng tuyệt đối */
+            height: 2px;
+            background: transparent; /* Ẩn background mặc định */
+            outline: none;
+            opacity: 0.9;
+            position: absolute;
+            z-index: 2;
+            cursor: pointer;
+        }
+        .speed-up-slider:hover {
+            opacity: 1;
+        }
+        /* Thiết kế nút kéo (thumb) cho Webkit */
+        .speed-up-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+            border: 2px solid #28a745;
+            transition: background .2s, border .2s;
+        }
+        .speed-up-slider::-webkit-slider-thumb:hover {
+            background: #f0f0f0;
+            border-color: #0056b3;
+        }
+        /* Thiết kế nút kéo (thumb) cho Firefox */
+        .speed-up-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+            border: 2px solid #28a745;
+            transition: background .2s, border .2s;
+        }
+        .speed-up-slider::-moz-range-thumb:hover {
+            background: #f0f0f0;
+            border-color: #0056b3;
+        }
+
+        /* Các chỉ báo vòng tròn và đường ray */
+        .indicators {
+            position: absolute;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: calc(100% - 8px); /* Chiều rộng bằng slider trừ đi chiều rộng của thumb */
+            height: 2px;
+            background-color: #888; /* Màu đường ray */
+            left: 4px; /* Dịch sang phải một nửa chiều rộng của thumb để căn giữa */
+            z-index: 1;
+        }
+        .indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #bbb;
+            transition: background-color 0.3s;
+        }
+    `);
+
+    const targetElementSelector = '.auto-accept-label';
+    waitForElementStable(targetElementSelector, (targetElement) => {
+        if (targetElement) {
+            const container = document.createElement('div');
+            container.className = 'speed-up-slider-container';
+
+            const labelText = document.createElement('label');
+            labelText.textContent = 'Chế độ Khiêu chiến nhanh';
+            labelText.htmlFor = 'speedUpSlider';
+
+            const sliderRow = document.createElement('div');
+            sliderRow.className = 'slider-row';
+
+            const normalLabelWrapper = document.createElement('div');
+            normalLabelWrapper.className = 'label-wrapper';
+            const normalLabel = document.createElement('span');
+            normalLabel.textContent = 'Bình thường';
+            normalLabelWrapper.appendChild(normalLabel);
+
+            const fastLabelWrapper = document.createElement('div');
+            fastLabelWrapper.className = 'label-wrapper';
+            const fastLabel = document.createElement('span');
+            fastLabel.textContent = 'Nhanh';
+            fastLabelWrapper.appendChild(fastLabel);
+
+            // Container mới để chứa thanh trượt và các chỉ báo
+            const sliderControlContainer = document.createElement('div');
+            sliderControlContainer.className = 'slider-control-container';
+
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.id = 'speedUpSlider';
+            slider.className = 'speed-up-slider';
+            slider.min = SPEED_MODE_NORMAL;
+            slider.max = SPEED_MODE_FAST;
+            slider.step = 1;
+            slider.value = speedUpMode;
+
+            // Các chỉ báo vòng tròn
+            const indicators = document.createElement('div');
+            indicators.className = 'indicators';
+            const indicatorDots = [];
+            for (let i = 0; i < 3; i++) {
+                const indicator = document.createElement('div');
+                indicator.className = 'indicator';
+                indicator.id = `speedUpDot${i}`;
+                indicators.appendChild(indicator);
+                indicatorDots.push(indicator);
             }
 
-            /* Nhãn cho các vị trí */
-            .speed-up-labels {
-                display: flex;
-                justify-content: space-between;
-                width: 90%; /* Phù hợp với chiều rộng slider */
-                font-size: 11px; /* Nhãn nhỏ hơn */
-                color: #aaa; /* Màu nhãn nhẹ nhàng hơn */
-                margin-top: 5px;
-            }
-            .speed-up-labels span {
-                flex: 1; /* Chia đều không gian */
-                text-align: center;
-                white-space: nowrap; /* Đảm bảo nhãn không bị ngắt dòng */
-            }
-            .speed-up-labels span:first-child {
-                text-align: left; /* Nhãn đầu tiên căn trái */
-            }
-            .speed-up-labels span:last-child {
-                text-align: right; /* Nhãn cuối cùng căn phải */
-            }
-            }
-        `);
-
-        const targetElementSelector = '.auto-accept-label';
-        waitForElementStable(targetElementSelector, (targetElement) => {
-            if (targetElement) {
-                const container = document.createElement('div');
-                container.className = 'speed-up-slider-container';
-
-                const labelText = document.createElement('label');
-                labelText.textContent = 'Chế độ Khiêu chiến nhanh';
-                labelText.htmlFor = 'speedUpSlider';
-
-                const slider = document.createElement('input');
-                slider.type = 'range';
-                slider.id = 'speedUpSlider';
-                slider.className = 'speed-up-slider';
-                slider.min = SPEED_MODE_NORMAL;
-                slider.max = SPEED_MODE_FAST;
-                slider.step = 1;
-                slider.value = speedUpMode;
-
-                const labelsDiv = document.createElement('div');
-                labelsDiv.className = 'speed-up-labels';
-                labelsDiv.innerHTML = `
-                    <span>Bình thường</span>
-                    <span>Nhanh</span>
-                `;
-
-                slider.addEventListener('input', (e) => {
-                    speedUpMode = parseInt(e.target.value);
-                    localStorage.setItem('hh3d_lvd_speed_mode', speedUpMode.toString());
-                    const modeNames = ['Bình thường', 'Nhanh vừa', 'Nhanh'];
-                    console.log(`%c[LVD - INFO] Chế độ "Khiêu chiến nhanh": ${modeNames[speedUpMode]}.`,
-                                'color: #8A2BE2;');
+            // Hàm cập nhật màu sắc chỉ báo
+            function updateIndicators() {
+                const value = parseInt(slider.value, 10);
+                indicatorDots.forEach((dot, index) => {
+                    dot.style.backgroundColor = (index === value) ? "#28a745" : "#bbb";
                 });
-
-                container.appendChild(labelText);
-                container.appendChild(slider);
-                container.appendChild(labelsDiv);
-
-                targetElement.parentNode.insertBefore(container, targetElement.nextSibling);
-                console.log('%c[LVD - INFO] Đã chèn Slider "Khiêu chiến nhanh".', 'color: lightgreen;');
-            } else {
-                console.warn('%c[LVD - CẢNH BÁO] Không tìm thấy ".auto-accept-label" để chèn slider.', 'color: orange;');
             }
-        }, 10000); // Chờ 10 giây cho element .auto-accept-label
-    }
+
+            slider.addEventListener('input', (e) => {
+                speedUpMode = parseInt(e.target.value);
+                localStorage.setItem('hh3d_lvd_speed_mode', speedUpMode.toString());
+                const modeNames = ['Bình thường', 'Nhanh vừa', 'Nhanh tối đa'];
+                console.log(`%c[LVD - INFO] Chế độ "Khiêu chiến nhanh": ${modeNames[speedUpMode]}.`,
+                            'color: #8A2BE2;');
+                updateIndicators();
+            });
+
+            // Gắn các phần tử vào container
+            sliderControlContainer.appendChild(indicators);
+            sliderControlContainer.appendChild(slider);
+
+            sliderRow.appendChild(normalLabelWrapper);
+            sliderRow.appendChild(sliderControlContainer);
+            sliderRow.appendChild(fastLabelWrapper);
+
+            container.appendChild(labelText);
+            container.appendChild(sliderRow);
+
+            targetElement.parentNode.insertBefore(container, targetElement.nextSibling);
+            console.log('%c[LVD - INFO] Đã chèn Slider "Khiêu chiến nhanh".', 'color: lightgreen;');
+
+            // Cập nhật màu sắc chỉ báo lần đầu
+            updateIndicators();
+        } else {
+            console.warn('%c[LVD - CẢNH BÁO] Không tìm thấy ".auto-accept-label" để chèn slider.', 'color: orange;');
+        }
+    }, 10000);
+}
 
     // ===============================================
     // HÀM XỬ LÝ CAN THIỆP THỜI GIAN
@@ -378,10 +446,10 @@
     function initiateJoinBattle() {
         if (isRewardClaimedOrHandled) {
             console.log(`%c[LVD - INFO] Đã nhận thưởng/xử lý. Bỏ qua Gia Nhập trận đấu.`, 'color: #808080;');
+
             return;
         }
         console.log(`%c[LVD - AUTO] Đang cố gắng gia nhập trận đấu.`, 'color: #FFD700;');
-
         try {
             if (typeof window.joinBattleFunction === 'function') {
                 window.joinBattleFunction();
@@ -421,8 +489,13 @@
                     }
                 }, DELAY_BEFORE_CLICK);
             } else {
-                console.log(`%c[LVD - AUTO] Không tìm thấy nút "Gia Nhập". Thử lại sau.`, 'color: grey;');
-                setTimeout(initiateJoinBattle, DELAY_BETWEEN_RETRIES_LONG);
+                        joinBattleRetryCount++; // Tăng biến đếm
+                        if (joinBattleRetryCount < 2) { // Chỉ thử lại nếu số lần nhỏ hơn 2
+                            console.log(`%c[LVD - AUTO] Không tìm thấy nút "Gia Nhập" (lần ${joinBattleRetryCount}). Thử lại sau.`, 'color: grey;');
+                            setTimeout(initiateJoinBattle, DELAY_BETWEEN_RETRIES_LONG);
+                        } else {
+                                console.warn(`%c[LVD - CẢNH BÁO] Đã thử gia nhập 2 lần nhưng không thành công. Kết thúc chu trình.`, 'color: orange; font-weight: bold;');
+                        }
             }
         });
     }

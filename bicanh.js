@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         HH3D Bí Cảnh Tông Môn
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      1.8
-// @description  Tự động khiêu chiến và tấn công boss trong Bí Cảnh Tông Môn. Tích hợp UI nút toggle, hiển thị trạng thái, tạm dừng khi hết lượt.
+// @version      1.9
+// @description  Tự động khiêu chiến và tấn công boss trong Bí Cảnh Tông Môn. Tự nhận thưởng. Tích hợp UI nút toggle, hiển thị trạng thái, tạm dừng khi hết lượt.
 // @author       Dr.Trune
 // @match        https://hoathinh3d.gg/bi-canh-tong-mon*
 // @grant        none
@@ -10,19 +10,19 @@
 
 (function() {
     'use strict';
-    
+
     // ===============================================
     // CẤU HÌNH CÁC BIẾN THỜI GIAN
     // ===============================================
 
-    const INITIAL_SCRIPT_DELAY = 1000;
-    const TIMEOUT_ELEMENT_STABLE = 10000;
-    const INTERVAL_ELEMENT_STABLE = 500;
-    const COOLDOWN_BUFFER_MS = 2000;
-    const DELAY_BEFORE_CLICK = 500;
-    const DELAY_AFTER_ATTACK = 2000;
-    const CHECK_INTERVAL_AFTER_ACTION_MS = 3000;
-    const IDLE_CHECK_INTERVAL_MS = 5000;
+const INITIAL_SCRIPT_DELAY = 2000; // Thời gian chờ ban đầu (ms) trước khi script bắt đầu chạy.
+    const TIMEOUT_ELEMENT_STABLE = 5000; // Thời gian tối đa (ms) để chờ một phần tử xuất hiện.
+    const INTERVAL_ELEMENT_STABLE = 500; // Tần suất kiểm tra (ms) một phần tử đã xuất hiện.
+    const COOLDOWN_BUFFER_MS = 1000; // Thời gian chờ đệm (ms) sau khi nút hồi chiêu.
+    const DELAY_BEFORE_CLICK = 500; // Thời gian chờ (ms) trước khi thực hiện click.
+    const DELAY_AFTER_ATTACK = 2000; // Thời gian chờ (ms) mô phỏng trận đánh kết thúc.
+    const CHECK_INTERVAL_AFTER_ACTION_MS = 3000; // Thời gian chờ (ms) sau mỗi hành động thành công.
+    const IDLE_CHECK_INTERVAL_MS = 2000; // Thời gian chờ (ms) khi không tìm thấy bất kỳ nút nào.
 
     // ===============================================
     // CẤU HÌNH BAN ĐẦU VÀ BIẾN TOÀN CỤC
@@ -178,7 +178,7 @@
             stopMainLoop('Tính năng tự động đã bị tắt');
             return;
         }
-        
+
         if (isScriptRunning) {
             updateScriptStatus('Vòng lặp đã chạy. Bỏ qua lệnh khởi động.', 'info');
             return;
@@ -192,8 +192,34 @@
     // ===============================================
     // HÀM XỬ LÝ GAMEPLAY CHÍNH
     // ===============================================
+    async function handleClaimReward() {
+        updateScriptStatus('Đang kiểm tra xem có phần thưởng để nhận không...', 'info');
+        const claimRewardBtn = document.querySelector('button#claim-reward-btn');
 
+        if (claimRewardBtn) {
+            updateScriptStatus('Đã tìm thấy nút "Nhận Thưởng". Đang click...', 'success');
+            await sleep(DELAY_BEFORE_CLICK);
+            if (safeClick(claimRewardBtn, 'nút "Nhận Thưởng"')) {
+                updateScriptStatus('Đã nhận thưởng thành công. Đang tải lại trang...', 'success');
+                // Thêm lệnh tải lại trang ở đây
+                setTimeout(() => {
+                    location.reload();
+                }, 1000); // Chờ 1 giây để đảm bảo hành động click đã được xử lý
+                return true;
+            } else {
+                updateScriptStatus('Không click được nút "Nhận Thưởng". Vui lòng thử lại thủ công.', 'error');
+            }
+        }
+        updateScriptStatus('Không có phần thưởng để nhận. Chuyển sang tìm boss.', 'info');
+        return false;
+    }
     async function checkAndClickBoss() {
+        const rewardHandled = await handleClaimReward();
+        if (rewardHandled) {
+            // Nếu đã xử lý nhận thưởng, không làm gì nữa, script sẽ chạy lại vòng lặp sau vài giây.
+            mainLoopTimeoutId = setTimeout(checkAndClickBoss, CHECK_INTERVAL_AFTER_ACTION_MS);
+            return;
+        }
         updateScriptStatus('--- Bắt đầu chu kỳ kiểm tra mới ---', 'info');
         if (!getAutoClickStateFromStorage() || !isScriptRunning) {
             stopMainLoop('Đã dừng giữa chừng');

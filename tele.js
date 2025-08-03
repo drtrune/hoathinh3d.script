@@ -12,8 +12,8 @@
 (function() {
     'use strict';
 
-    const CHECK_INTERVAL = 1000; // 1 giây
-    const DELAY_BEFORE_CLICK = 750; // 0.75 giây
+    const CHECK_INTERVAL = 500;
+    const DELAY_BEFORE_CLICK = 500;
 
     let mainIntervalId = null;
 

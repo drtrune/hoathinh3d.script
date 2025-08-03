@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Hoathinh3D Auto
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      1.0
+// @version      1.1
 // @description  Tool tự động cho trang hoathinh3d
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/*
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {

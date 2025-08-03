@@ -19,8 +19,8 @@
     originalConsoleLog('[Auto Diem Danh DEBUG] SCRIPT ĐÃ KHỞI TẠO. Bắt đầu vòng lặp kiểm tra chính...');
 
     // --- Cấu hình ---
-    const MAIN_CHECK_INTERVAL = 2000; // Mỗi 2 giây, tương tự Tiên Duyên
-    const INTER_ACTION_DELAY = 1000;  // 1 giây, tương tự Tiên Duyên
+    const MAIN_CHECK_INTERVAL = 500;
+    const INTER_ACTION_DELAY = 300;
 
     // --- Biến cờ trạng thái ---
     let intervalId = null; // ID của setInterval chính

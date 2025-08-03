@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Đổ thạch
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      1.7
+// @version      1.8
 // @description  Tự động đặt cược vào đá có tỷ lệ thưởng cao nhất trên HoatHinh3D
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/do-thach-hh3d*
@@ -346,15 +346,8 @@
         }
     }
 
-    // Đảm bảo script khởi động sau khi DOM đã tải đầy đủ
-    window.addEventListener('DOMContentLoaded', () => {
-        console.log('[Auto Bet - DEBUG] DOMContentLoaded fired.');
-        startMainLoop();
-    });
-    window.addEventListener('load', () => {
-        console.log('[Auto Bet - DEBUG] window.load fired.');
-        startMainLoop();
-    });
+    // Khởi động vòng lặp ngay khi script được thực thi
+    startMainLoop();
 
     window.stopAutoBetting = stopAutoBetting;
     console.log('[Auto Bet - DEBUG] Hàm stopAutoBetting() có sẵn trong console (window.stopAutoBetting).');

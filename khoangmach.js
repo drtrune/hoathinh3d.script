@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Khoang Mach
 // @namespace    https://github.com/drtrune/hoathinh3d.script/
-// @version      3.2
+// @version      3.3
 // @description  Tự động hóa quá trình khai thác khoáng mạch: chọn mỏ cụ thể, điều hướng, vào mỏ, xem chi tiết, kiểm tra và nhận thưởng theo điều kiện.
 // @author       Dr. Trune
 // @match        https://hoathinh3d.gg/khoang-mach*
@@ -62,6 +62,7 @@
         ['66', { name: "Dao Trì Thánh Địa", type: "silver" }], ['67', { name: "Cửu U Vực", type: "silver" }], ['68', { name: "Hắc Ám Chi Địa", type: "silver" }],
         ['69', { name: "Viễn Cổ Tiên Vực", type: "silver" }], ['70', { name: "Ám Nguyệt Tinh", type: "silver" }], ['71', { name: "Vân Hải", type: "silver" }],
         ['72', { name: "Nam Bình Sơn", type: "silver" }], ['74', { name: "La Thiên Tinh Vực", type: "silver" }], ['75', { name: "Liên Minh Tinh Vực", type: "silver" }],
+        ['100000', { name: "Côn Hư TInh Vực", type: "silver" }], ['100001', { name: "Âm Minh Chi Địa", type: "silver" }],['100002', { name: "Huyết Thiên Đại Lục", type: "silver" }],
         // Hạ (Copper)
         ['1', { name: "Thiên Hải", type: "copper" }], ['2', { name: "Thạch Thôn", type: "copper" }], ['3', { name: "Hoang Vực", type: "copper" }],
         ['4', { name: "Hỏa Quốc", type: "copper" }], ['5', { name: "Thái Cổ Thánh Sơn", type: "copper" }], ['6', { name: "Tiên Cổ Giới", type: "copper" }],
@@ -277,83 +278,89 @@
     /**
      * Xử lý hàng của người chơi hiện tại trong giao diện chi tiết mỏ.
      */
-    function processPlayerMineRow() {
-        updateStatus('Đang xử lý thông tin khai thác...');
-        currentPlayerId = getCurrentPlayerId();
-        let playerRow = null;
+    function processPlayerMineRow() {
+        updateStatus('Đang xử lý thông tin khai thác...');
+        currentPlayerId = getCurrentPlayerId();
+        let playerRow = null;
 
-        if (currentPlayerId) {
-            playerRow = document.querySelector(`div.user-row button.claim-reward[data-user-id="${currentPlayerId}"]`)?.closest('div.user-row');
-            if (playerRow) {
-                console.log(`[Auto Khoáng Mạch] Found player's own row with ID: ${currentPlayerId}.`);
-            } else {
-                console.log(`[Auto Khoáng Mạch] Player's own row (ID: ${currentPlayerId}) not found directly by claim button.`);
-            }
-        } else {
-             console.log('[Auto Khoáng Mạch] Current User ID not available.');
-        }
+        if (currentPlayerId) {
+            // Cải tiến logic: Tìm trực tiếp hàng của người chơi (div.user-row) bằng data-user-id
+            playerRow = document.querySelector(`div.user-row[data-user-id="${currentPlayerId}"]`);
 
+            if (playerRow) {
+                console.log(`[Auto Khoáng Mạch] Found player's own row with ID: ${currentPlayerId}.`);
+            } else {
+                console.log(`[Auto Khoáng Mạch] Player's own row (ID: ${currentPlayerId}) not found.`);
+            }
+        } else {
+            console.log('[Auto Khoáng Mạch] Current User ID not available.');
+        }
 
-        if (!playerRow) {
-            console.log('[Auto Khoáng Mạch] Searching for any claimable user row (first 2 rows).');
-            // Tìm nút nhận thưởng không bị disabled trong hai hàng đầu tiên nếu có
-            const userRows = document.querySelectorAll('div#user-list div.user-row'); // Updated selector
-            for (let i = 0; i < Math.min(userRows.length, 2); i++) { // Check first 2 user-rows
-                const row = userRows[i];
-                const claimButton = row.querySelector('button.claim-reward:not(:disabled)');
-                const khaiThacSpan = row.querySelector('span.khai-thac');
-                if (claimButton && khaiThacSpan && khaiThacSpan.textContent.trim() === 'Đạt tối đa') {
-                    playerRow = row;
-                    console.log(`[Auto Khoáng Mạch] Found claimable row for user ID: ${row.dataset.userId || 'unknown'}.`);
-                    break;
-                }
-            }
-        }
+        // Nếu không tìm thấy hàng của chính mình, tìm một hàng bất kỳ đang có sẵn
+        if (!playerRow) {
+            console.log('[Auto Khoáng Mạch] Searching for any claimable user row (first 2 rows).');
+            const userRows = document.querySelectorAll('div#user-list div.user-row');
+            for (let i = 0; i < Math.min(userRows.length, 2); i++) {
+                const row = userRows[i];
+                const claimButton = row.querySelector('button.claim-reward:not(:disabled)');
+                const khaiThacSpan = row.querySelector('span.khai-thac');
+                if (claimButton && khaiThacSpan && khaiThacSpan.textContent.trim() === 'Đạt tối đa') {
+                    playerRow = row;
+                    console.log(`[Auto Khoáng Mạch] Found claimable row for user ID: ${row.dataset.userId || 'unknown'}.`);
+                    break;
+                }
+            }
+        }
 
-        if (playerRow) {
-            const remainingTimeMs = getRemainingMiningTime(playerRow);
-            const claimButton = playerRow.querySelector('button.claim-reward');
+        if (playerRow) {
+            const remainingTimeMs = getRemainingMiningTime(playerRow);
+            const claimButton = playerRow.querySelector('button.claim-reward');
+            const notReadyButton = playerRow.querySelector('button.chua-dat'); // Thêm dòng này để tìm nút "chưa đạt"
 
-            if (remainingTimeMs === 0) { // Mining is maxed
-                const tuviBonus = getTuViBonusPercentage();
-                let shouldClaim = false;
+            if (remainingTimeMs === 0) { // Mining is maxed
+                // Logic xử lý nhận thưởng...
+                const tuviBonus = getTuViBonusPercentage();
+                let shouldClaim = false;
 
-                switch (selectedRewardMode) {
-                    case 'any': shouldClaim = true; break; // "Bất kỳ"
-                    case '0%': shouldClaim = tuviBonus > 0; break; // Logic cũ, không còn được dùng với UI mới nhưng giữ lại để an toàn
-                    case '20%': shouldClaim = tuviBonus >= 20; break;
-                    case '50%': shouldClaim = tuviBonus >= 50; break; // Logic cũ
-                    case '100%': shouldClaim = tuviBonus >= 100; break;
-                }
+                switch (selectedRewardMode) {
+                    case 'any':
+                        shouldClaim = true;
+                        break;
+                    case '20%':
+                        shouldClaim = tuviBonus >= 20;
+                        break;
+                    case '100%':
+                        shouldClaim = tuviBonus >= 100;
+                        break;
+                }
 
-                if (shouldClaim && claimButton && !claimButton.disabled) {
-                    updateStatus(`Đang nhận thưởng với bonus ${tuviBonus}%.`);
-                    setTimeout(() => {
-                        if (safeClick(claimButton, 'Claim Reward Button')) {
-                            updateStatus('Đã nhận thưởng. Chờ chu kỳ tiếp theo.');
-                            setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_CLAIMED);
-                        } else {
-                            updateStatus('Lỗi khi nhấn nút nhận thưởng. Thử lại sau 10s.');
-                            setNextCycleTimer(10 * 1000);
-                        }
-                    }, CONFIG.TIMEOUT_CLICK_DELAY);
-                } else {
-                    updateStatus(`Không nhận thưởng (bonus: ${tuviBonus}%, cần: ${selectedRewardMode}). Chờ.`);
-                    setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_NOT_READY);
-                }
-            } else if (remainingTimeMs > 0) { // Still mining
-                const waitTime = remainingTimeMs + 10000; // Add 10 seconds buffer
-                updateStatus(`Đang khai thác. Sẽ kiểm tra lại sau ${Math.ceil(waitTime / 1000)}s.`);
-                setNextCycleTimer(waitTime);
-            } else { // remainingTimeMs === -1 (couldn't read)
-                updateStatus('Không đọc được thời gian khai thác. Thử lại sau 1 phút.');
-                setNextCycleTimer(60 * 1000);
-            }
-        } else {
-            updateStatus('Không tìm thấy hàng của người chơi. Thử lại sau.');
-            setNextCycleTimer(CONFIG.TIMEOUT_RETRY_NO_ROW);
-        }
-    }
+                if (shouldClaim && claimButton && !claimButton.disabled) {
+                    updateStatus(`Đang nhận thưởng với bonus ${tuviBonus}%.`);
+                    setTimeout(() => {
+                        if (safeClick(claimButton, 'Claim Reward Button')) {
+                            updateStatus('Đã nhận thưởng. Chờ chu kỳ tiếp theo.');
+                            setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_CLAIMED);
+                        } else {
+                            updateStatus('Lỗi khi nhấn nút nhận thưởng. Thử lại sau 10s.');
+                            setNextCycleTimer(10 * 1000);
+                        }
+                    }, CONFIG.TIMEOUT_CLICK_DELAY);
+                } else {
+                    updateStatus(`Không nhận thưởng (bonus: ${tuviBonus}%, cần: ${selectedRewardMode}). Chờ.`);
+                    setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_NOT_READY);
+                }
+            } else if (remainingTimeMs > 0) { // Still mining
+                updateStatus(`Đang khai thác. Sẽ kiểm tra lại sau ${Math.ceil(CONFIG.TIMEOUT_COOLDOWN_NOT_READY / 1000)}s.`);
+                setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_NOT_READY);
+            } else { // remainingTimeMs === -1 (couldn't read)
+                updateStatus('Không đọc được thời gian khai thác. Thử lại sau 1 phút.');
+                setNextCycleTimer(60 * 1000);
+            }
+        } else {
+            updateStatus('Không tìm thấy hàng của người chơi. Thử lại sau.');
+            setNextCycleTimer(CONFIG.TIMEOUT_RETRY_NO_ROW);
+        }
+    }
 
     /**
      * Chuyển đổi loại khoáng mạch (Thượng/Trung/Hạ) nếu cần.

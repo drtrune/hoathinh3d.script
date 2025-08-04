@@ -282,7 +282,7 @@ async function openRewardChests() {
                         
                         // Thêm độ trễ 1.5 giây sau mỗi lần click thành công
                         // để đợi trang web xử lý xong
-                        await new Promise(resolve => setTimeout(resolve, 1500)); 
+                        await new Promise(resolve => setTimeout(resolve, 700)); 
 
                     } catch (e) {
                         console.error(`[Hoạt Động Ngày Enhancer] Lỗi khi kích hoạt ảnh trong rương ${id}:`, e);

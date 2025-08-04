@@ -16,27 +16,29 @@
     // ===============================================
 
     // Thời gian tối đa chờ một phần tử xuất hiện ổn định (ms)
-    const TIMEOUT_ELEMENT_STABLE = 2000; // 2 giây
+    const TIMEOUT_ELEMENT_STABLE = 2000;
     // Khoảng thời gian giữa các lần kiểm tra phần tử ổn định (ms)
-    const INTERVAL_ELEMENT_STABLE = 500; // 0.5 giây
+    const INTERVAL_ELEMENT_STABLE = 500;
 
     // Thời gian đệm thêm sau khi hồi chiêu kết thúc (ms)
-    const COOLDOWN_BUFFER_MS = 2000; // 2 giây
+    const COOLDOWN_BUFFER_MS = 2000;
+
     // Thời gian tối đa chờ hộp thoại đóng (ms)
-    const TIMEOUT_MODAL_CLOSE = 10000; // 10 giây
+    const TIMEOUT_MODAL_CLOSE = 10000;
+
     // Khoảng thời gian giữa các lần kiểm tra khi chờ hộp thoại đóng (ms)
-    const INTERVAL_MODAL_CLOSE = 300; // 0.3 giây
+    const INTERVAL_MODAL_CLOSE = 300;
 
     // Độ trễ trước khi thực hiện click (ms)
     const DELAY_BEFORE_CLICK = 500; // 0.5 giây
     // Độ trễ sau khi thay đổi ngũ hành để game kịp cập nhật (ms)
-    const DELAY_AFTER_ELEMENT_CHANGE = 1000; // 1 giây
+    const DELAY_AFTER_ELEMENT_CHANGE = 500;
     // Độ trễ khi script cần thử lại một hành động (ms)
-    const DELAY_BETWEEN_RETRIES_SHORT = 500; // 0.5 giây
-    const DELAY_BETWEEN_RETRIES_LONG = 1000; // 1 giây
+    const DELAY_BETWEEN_RETRIES_SHORT = 500;
+    const DELAY_BETWEEN_RETRIES_LONG = 1000;
 
     // Thời gian tối đa chờ nút nhận thưởng khi khởi động (ms)
-    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 2000; // 2 giây
+    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 1000;
 
 
     // ===============================================

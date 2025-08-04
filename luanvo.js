@@ -34,7 +34,7 @@
 
     // Thời gian cho setTimeout
     const DELAY_SETTIMEOUT_NORMAL = 3000; // Delay gốc của game
-    const DELAY_SETTIMEOUT_MEDIUM = 600;  // Nhanh vừa
+    const DELAY_SETTIMEOUT_MEDIUM = 1000;  // Nhanh vừa
     const DELAY_SETTIMEOUT_FAST = 200;    // Nhanh tối đa
 
     // Thời gian cho setInterval

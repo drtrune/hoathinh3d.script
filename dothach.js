@@ -4,7 +4,7 @@
 // @version      1.8
 // @description  Tự động đặt cược vào đá có tỷ lệ thưởng cao nhất trên HoatHinh3D
 // @author       Dr. Trune
-// @match        https://hoathinh3d.gg/do-thach-hh3d*
+// @match        *do-thach-hh3d*
 // @grant        none
 // ==/UserScript==
 

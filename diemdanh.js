@@ -4,7 +4,7 @@
 // @version      2.8
 // @description  Tự động nhấp nút "Điểm Danh"  
 // @author       Dr. Trune
-// @match        https://hoathinh3d.gg/diem-danh*
+// @match.       *diem-danh*
 // @grant        none
 // ==/UserScript==
 

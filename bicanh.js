@@ -4,7 +4,7 @@
 // @version      1.9
 // @description  Tự động khiêu chiến và tấn công boss trong Bí Cảnh Tông Môn. Tự nhận thưởng. Tích hợp UI nút toggle, hiển thị trạng thái, tạm dừng khi hết lượt.
 // @author       Dr.Trune
-// @match        https://hoathinh3d.gg/bi-canh-tong-mon*
+// @match        *bi-canh-tong-mon*
 // @grant        none
 // ==/UserScript==
 

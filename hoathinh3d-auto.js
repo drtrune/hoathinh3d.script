@@ -4,7 +4,7 @@
 // @version      1.1
 // @description  Tool tự động cho trang hoathinh3d
 // @author       Dr. Trune
-// @match        https://hoathinh3d.*
+// @match        https://hoathinh3d.mx
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
 // @run-at       document-start

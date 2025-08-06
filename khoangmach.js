@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         HH3D Khoang Mach
 // @namespace    https://github.com/drtrune/hoathinh3d.script/
-// @version      3.3
-// @description  Tự động hóa quá trình khai thác khoáng mạch: chọn mỏ cụ thể, điều hướng, vào mỏ, xem chi tiết, kiểm tra và nhận thưởng theo điều kiện.
+// @version      3.4
+// @description  Tự động hóa quá trình khai thác khoáng mạch: chọn mỏ cụ thể, điều hướng, vào mỏ, nhận thưởng theo điều kiện, tự mua linh quang phù
 // @author       Dr. Trune
 // @match        https://hoathinh3d.mx/khoang-mach*
 // @grant        none
@@ -28,6 +28,7 @@
         TIMEOUT_RETRY_NO_ROW: 5 * 1000, // 5 giây nếu không tìm thấy hàng người chơi
         TIMEOUT_CLICK_DELAY: 500, // Độ trễ trước khi click
         TIMEOUT_PAGE_NAV_WAIT: 2000, // 2 giây chờ sau khi chuyển trang/vào mỏ
+        TIMEOUT_RELOAD: 5000, // Reload sau khi buff mỏ
     };
 
     let selectedMineId = localStorage.getItem(CONFIG.LOCAL_STORAGE_PREFIX + 'id') || CONFIG.DEFAULT_MINE_ID;
@@ -87,7 +88,22 @@
             console.log(`[Auto Khoáng Mạch] Trạng thái: ${message}`);
         }
     }
-
+    // Hàm chờ và click
+    function waitForElementAndClick(selector, actionName, callback) {
+        const checkExist = setInterval(() => {
+            const element = document.querySelector(selector);
+            if (element) {
+                clearInterval(checkExist);
+                console.log(`[Auto Khoáng Mạch] Found "${selector}" for action: ${actionName}.`);
+                safeClick(element, actionName);
+                if (callback) callback();
+            }
+        }, 500); // Kiểm tra mỗi 500ms
+        setTimeout(() => {
+            clearInterval(checkExist);
+            console.log(`[Auto Khoáng Mạch] Timeout: Cannot find "${selector}" for action: ${actionName}.`);
+        }, 5000); // Timeout sau 5s
+    }
     /**
      * Chờ một phần tử xuất hiện trong DOM, hiển thị và không bị disabled.
      * @param {string} selector - CSS selector của phần tử cần chờ.
@@ -110,7 +126,35 @@
             }
         }, interval);
     }
+    /**
+     * Chuyển đổi loại khoáng mạch (Thượng/Trung/Hạ) nếu cần.
+     * @param {string} mineType - 'gold', 'silver', or 'copper'.
+     * @param {function(): void} nextStep - Callback to proceed after type switch.
+     */
+    function switchMineType(mineType, nextStep) {
+        updateStatus(`Đang chuyển sang loại mỏ "${mineType}".`);
+        const currentActiveButton = document.querySelector('button.mine-type-button.active');
+        if (currentActiveButton && currentActiveButton.dataset.mineType === mineType) {
+            console.log(`[Auto Khoáng Mạch] Already on "${mineType}" mine type.`);
+            nextStep();
+            return;
+        }
 
+        const targetButton = document.querySelector(`button.mine-type-button[data-mine-type="${mineType}"]`);
+        if (targetButton) {
+            setTimeout(() => {
+                if (safeClick(targetButton, `"${mineType}" mine type button`)) {
+                    waitForElementStable('div.mine-image[data-mine-id]', nextStep, CONFIG.TIMEOUT_ELEMENT_STABLE, CONFIG.INTERVAL_ELEMENT_CHECK);
+                } else {
+                    updateStatus('Lỗi khi chuyển loại mỏ. Thử lại sau.');
+                    setNextCycleTimer(CONFIG.TIMEOUT_RETRY_NO_DATA);
+                }
+            }, CONFIG.TIMEOUT_CLICK_DELAY);
+        } else {
+            updateStatus(`Không tìm thấy nút loại mỏ "${mineType}". Vui lòng kiểm tra lại ID mỏ đã chọn. Dừng auto.`);
+            stopAuto();
+        }
+    }
     /**
      * Thực hiện hành động click một cách an toàn và đáng tin cậy.
      * @param {Element} element - Phần tử DOM cần click.
@@ -284,9 +328,7 @@
         let playerRow = null;
 
         if (currentPlayerId) {
-            // Cải tiến logic: Tìm trực tiếp hàng của người chơi (div.user-row) bằng data-user-id
             playerRow = document.querySelector(`div.user-row[data-user-id="${currentPlayerId}"]`);
-
             if (playerRow) {
                 console.log(`[Auto Khoáng Mạch] Found player's own row with ID: ${currentPlayerId}.`);
             } else {
@@ -296,7 +338,6 @@
             console.log('[Auto Khoáng Mạch] Current User ID not available.');
         }
 
-        // Nếu không tìm thấy hàng của chính mình, tìm một hàng bất kỳ đang có sẵn
         if (!playerRow) {
             console.log('[Auto Khoáng Mạch] Searching for any claimable user row (first 2 rows).');
             const userRows = document.querySelectorAll('div#user-list div.user-row');
@@ -314,44 +355,93 @@
 
         if (playerRow) {
             const remainingTimeMs = getRemainingMiningTime(playerRow);
-            const claimButton = playerRow.querySelector('button.claim-reward');
-            const notReadyButton = playerRow.querySelector('button.chua-dat'); // Thêm dòng này để tìm nút "chưa đạt"
+            const tuviBonus = getTuViBonusPercentage();
+            const isMineOwner = !!playerRow.querySelector('.mine-owner-icon');
+            let isClaimable = (playerRow.querySelector('button.claim-reward') && !playerRow.querySelector('button.claim-reward').disabled);
 
-            if (remainingTimeMs === 0) { // Mining is maxed
-                // Logic xử lý nhận thưởng...
-                const tuviBonus = getTuViBonusPercentage();
-                let shouldClaim = false;
-
-                switch (selectedRewardMode) {
-                    case 'any':
-                        shouldClaim = true;
-                        break;
-                    case '20%':
-                        shouldClaim = tuviBonus >= 20;
-                        break;
-                    case '100%':
-                        shouldClaim = tuviBonus >= 100;
-                        break;
-                }
-
-                if (shouldClaim && claimButton && !claimButton.disabled) {
-                    updateStatus(`Đang nhận thưởng với bonus ${tuviBonus}%.`);
+            if (remainingTimeMs === 0) {
+                if (isMineOwner && tuviBonus >= 21 && tuviBonus <= 50) {
+                    // --- LOGIC MỚI: CHỦ MỎ & MUA PHÙ ---
+                    updateStatus(`Là chủ mỏ và tu vi bonus ${tuviBonus}%. Đang mua Linh Quang Phù.`);
+                    // Mở shop
                     setTimeout(() => {
-                        if (safeClick(claimButton, 'Claim Reward Button')) {
-                            updateStatus('Đã nhận thưởng. Chờ chu kỳ tiếp theo.');
-                            setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_CLAIMED);
-                        } else {
-                            updateStatus('Lỗi khi nhấn nút nhận thưởng. Thử lại sau 10s.');
-                            setNextCycleTimer(10 * 1000);
-                        }
-                    }, CONFIG.TIMEOUT_CLICK_DELAY);
+                        safeClick(document.getElementById('shopButton'), 'Mở Tiệm');
+                        // Mua Linh Quang Phù
+                        setTimeout(() => {
+                            const buyButton = document.querySelector('button.shop-item-button[data-item-id="4"]');
+                            if (buyButton) {
+                                safeClick(buyButton, 'Mua Linh Quang Phù');
+                                // Xác nhận mua
+                                setTimeout(() => {
+                                    waitForElementAndClick('button.swal2-confirm', 'Xác nhận Mua Ngay', () => {
+                                        updateStatus('Đã mua Linh Quang Phù. Tải lại trang.');
+                                        setTimeout(() => location.reload(), CONFIG.TIMEOUT_RELOAD);
+                                    });
+                                }, CONFIG.TIMEOUT_CLICK_DELAY);
+                            } else {
+                                updateStatus('Không tìm thấy nút mua Linh Quang Phù. Tải lại trang.');
+                                setTimeout(() => location.reload(), CONFIG.TIMEOUT_RELOAD);
+                            }
+                        }, 2000); // Chờ 2s để tiệm tải
+                    }, 2000);
+                } else if (!isMineOwner && tuviBonus >= 21 && tuviBonus <= 50) {
+                    // --- LOGIC CŨ: ĐOẠT MỎ ---
+                    const doatMoButton = playerRow.querySelector('button.doat-mo-btn');
+                    if (doatMoButton) {
+                        updateStatus(`Tu vi bonus ${tuviBonus}%, đang thực hiện Đoạt Mỏ.`);
+                        setTimeout(() => {
+                            safeClick(doatMoButton, 'Đoạt Mỏ');
+                            updateStatus('Đã nhấn Đoạt Mỏ. Đang chờ xác nhận.');
+                            waitForElementAndClick('button.swal2-confirm', 'Xác nhận Đoạt Mỏ', () => {
+                                updateStatus('Đã xác nhận Đoạt Mỏ. Tải lại trang.');
+                                setTimeout(() => location.reload(), CONFIG.TIMEOUT_RELOAD);
+                            });
+                        }, CONFIG.TIMEOUT_CLICK_DELAY);
+                    } else {
+                        updateStatus('Không tìm thấy nút Đoạt Mỏ. Chờ chu kỳ tiếp theo.');
+                        setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_NOT_READY);
+                    }
                 } else {
-                    updateStatus(`Không nhận thưởng (bonus: ${tuviBonus}%, cần: ${selectedRewardMode}). Chờ.`);
-                    setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_NOT_READY);
+                    // --- LOGIC CŨ: NHẬN THƯỞNG BÌNH THƯỜNG ---
+                    let shouldClaim = false;
+                    switch (selectedRewardMode) {
+                        case 'any':
+                            shouldClaim = true;
+                            break;
+                        case '0%':
+                            shouldClaim = tuviBonus > 0;
+                            break;
+                        case '20%':
+                            shouldClaim = tuviBonus >= 20;
+                            break;
+                        case '50%':
+                            shouldClaim = tuviBonus >= 50;
+                            break;
+                        case '100%':
+                            shouldClaim = tuviBonus >= 100;
+                            break;
+                    }
+
+                    if (shouldClaim && isClaimable) {
+                        updateStatus(`Đang nhận thưởng với bonus ${tuviBonus}%.`);
+                        setTimeout(() => {
+                            if (safeClick(playerRow.querySelector('button.claim-reward'), 'Claim Reward Button')) {
+                                updateStatus('Đã nhận thưởng. Chờ chu kỳ tiếp theo.');
+                                setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_CLAIMED);
+                            } else {
+                                updateStatus('Lỗi khi nhấn nút nhận thưởng. Thử lại sau 10s.');
+                                setNextCycleTimer(10 * 1000);
+                            }
+                        }, CONFIG.TIMEOUT_CLICK_DELAY);
+                    } else {
+                        updateStatus(`Không nhận thưởng (bonus: ${tuviBonus}%, cần: ${selectedRewardMode}). Chờ.`);
+                        setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_NOT_READY);
+                    }
                 }
             } else if (remainingTimeMs > 0) { // Still mining
-                updateStatus(`Đang khai thác. Sẽ kiểm tra lại sau ${Math.ceil(CONFIG.TIMEOUT_COOLDOWN_NOT_READY / 1000)}s.`);
-                setNextCycleTimer(CONFIG.TIMEOUT_COOLDOWN_NOT_READY);
+                const waitTime = remainingTimeMs + 10000;
+                updateStatus(`Đang khai thác. Sẽ kiểm tra lại sau ${Math.ceil(waitTime / 1000)}s.`);
+                setNextCycleTimer(waitTime);
             } else { // remainingTimeMs === -1 (couldn't read)
                 updateStatus('Không đọc được thời gian khai thác. Thử lại sau 1 phút.');
                 setNextCycleTimer(60 * 1000);
@@ -361,36 +451,6 @@
             setNextCycleTimer(CONFIG.TIMEOUT_RETRY_NO_ROW);
         }
     }
-
-    /**
-     * Chuyển đổi loại khoáng mạch (Thượng/Trung/Hạ) nếu cần.
-     * @param {string} mineType - 'gold', 'silver', or 'copper'.
-     * @param {function(): void} nextStep - Callback to proceed after type switch.
-     */
-    function switchMineType(mineType, nextStep) {
-        updateStatus(`Đang chuyển sang loại mỏ "${mineType}".`);
-        const currentActiveButton = document.querySelector('button.mine-type-button.active');
-        if (currentActiveButton && currentActiveButton.dataset.mineType === mineType) {
-            console.log(`[Auto Khoáng Mạch] Already on "${mineType}" mine type.`);
-            nextStep();
-            return;
-        }
-
-        const targetButton = document.querySelector(`button.mine-type-button[data-mine-type="${mineType}"]`);
-        if (targetButton) {
-            setTimeout(() => {
-                if (safeClick(targetButton, `"${mineType}" mine type button`)) {
-                    waitForElementStable('div.mine-image[data-mine-id]', nextStep, CONFIG.TIMEOUT_ELEMENT_STABLE, CONFIG.INTERVAL_ELEMENT_CHECK);
-                } else {
-                    updateStatus('Lỗi khi chuyển loại mỏ. Thử lại sau.');
-                    setNextCycleTimer(CONFIG.TIMEOUT_RETRY_NO_DATA);
-                }
-            }, CONFIG.TIMEOUT_CLICK_DELAY);
-        } else {
-            updateStatus(`Không tìm thấy nút loại mỏ "${mineType}". Vui lòng kiểm tra lại ID mỏ đã chọn. Dừng auto.`);
-            stopAuto();
-        }
-    }
 
     /**
      * Chuyển trang trong danh sách khoáng mạch.

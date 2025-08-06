@@ -269,7 +269,7 @@ const INITIAL_SCRIPT_DELAY = 2000; // Thời gian chờ ban đầu (ms) trước
     // Hàm chờ tiến trình hiến tế đạt 100% rồi reload trang
     async function waitForProgressFullAndReload() {
         updateScriptStatus('Đang chờ tiến độ hiến tế đạt 100%...', 'info');
-        for (let i = 0; i < 60; i++) { // Tối đa 60 lần (60 giây)
+        for (let i = 0; i < 10; i++) {  // Tối đa 10 lần, mỗi lần 1 giây
             const progressDiv = document.querySelector('div.progress-info');
             if (progressDiv) {
                 const match = progressDiv.textContent.trim().match(/^(\d+)\s*\/\s*(\d+)$/);
@@ -278,13 +278,13 @@ const INITIAL_SCRIPT_DELAY = 2000; // Thời gian chờ ban đầu (ms) trước
                     const total = parseInt(match[2], 10);
                     if (current >= total) {
                         updateScriptStatus('Tiến độ đã đạt 100%. Đang tải lại trang...', 'success');
-                        await sleep(1000);
+                        await sleep(1000); // Chờ 1 giây để đảm bảo mọi thứ đã ổn định
                         location.reload();
                         return;
                     }
                 }
             }
-            await sleep(1000);
+            await sleep(60000); // Chờ 1 phút trước khi kiểm tra lại
         }
         updateScriptStatus('Chờ tiến độ quá lâu, tự động tiếp tục vòng lặp.', 'warn');
     }

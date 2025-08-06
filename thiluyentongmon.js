@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name          HH3D Thí Luyện Tông Môn
-// @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       1.6
-// @description   Tự động nhận thí luyện
-// @author        Dr. Trune
-// @match         https://hoathinh3d.mx/thi-luyen-tong-mon*
-// @grant         none
+// @name          HH3D Thí Luyện Tông Môn
+// @namespace     https://github.com/drtrune/hoathinh3d.script
+// @version       1.7
+// @description   Tự động nhận thí luyện và tự dừng khi hoàn thành
+// @author        Dr. Trune
+// @match         https://hoathinh3d.mx/thi-luyen-tong-mon*
+// @grant         none
 // ==/UserScript==
 
 (function() {
@@ -22,6 +22,7 @@
     const COOLDOWN_BUFFER_MS = 2000; // 2 giây đệm thêm sau khi hồi chiêu kết thúc
     const DELAY_BEFORE_CLICK = 200; // delay trước khi thực hiện click
     const CHECK_INTERVAL_AFTER_ACTION_MS = 3000; // Kiểm tra lại mỗi 3 giây sau khi click hoặc nếu không có cooldown/lỗi tìm kiếm element
+    const TOAST_CHECK_DELAY = 1000; // Delay sau khi click để kiểm tra thông báo toast
 
     // ===============================================
     // CẤU HÌNH BAN ĐẦU VÀ BIẾN TOÀN CỤC
@@ -32,9 +33,9 @@
     let isUIMade = false;
     let isScriptFullyInitialized = false;
 
-    let mainLoopTimeoutId = null; // Thay thế mainLoopIntervalId bằng timeout ID
+    let mainLoopTimeoutId = null;
 
-    let scriptStatusElement = null; // Reference to the main script status element
+    let scriptStatusElement = null;
 
     // ===============================================
     // HÀM TIỆN ÍCH CHUNG
@@ -43,24 +44,22 @@
     function updateScriptStatus(message, type = 'log') {
         if (scriptStatusElement) {
             scriptStatusElement.textContent = `Trạng thái: ${message}`;
-            scriptStatusElement.style.color = type === 'error' ? '#ff4d4d' : '#B0C4DE'; // Colors for status element
+            scriptStatusElement.style.color = type === 'error' ? '#ff4d4d' : '#B0C4DE';
         }
-        // Logs to console (F12)
-        if (type === 'warn') console.warn(`[HH3D Thi Luyen] ${message}`);
-        else if (type === 'error') console.error(`[HH3D Thi Luyen] ${message}`);
-        else if (type === 'info') console.info(`[HH3D Thi Luyen] ${message}`);
-        else if (type === 'success') console.log(`%c[HH3D Thi Luyen] ${message}`, 'color: #32CD32;'); // LimeGreen
-        else console.log(`[HH3D Thi Luyen] ${message}`);
+        const logMessage = `[HH3D Thi Luyen] ${message}`;
+        if (type === 'warn') console.warn(logMessage);
+        else if (type === 'error') console.error(logMessage);
+        else if (type === 'info') console.info(logMessage);
+        else if (type === 'success') console.log(`%c${logMessage}`, 'color: #32CD32;');
+        else console.log(logMessage);
     }
 
     function waitForElementStable(selector, callback, timeout = TIMEOUT_ELEMENT_STABLE, interval = INTERVAL_ELEMENT_STABLE) {
         let startTime = Date.now();
         let foundElement = null;
-
-        const checkElement = () => {
+        const checkInterval = setInterval(() => {
             foundElement = document.querySelector(selector);
             const isVisible = foundElement && foundElement.offsetParent !== null;
-
             if (isVisible) {
                 clearInterval(checkInterval);
                 callback(foundElement);
@@ -68,27 +67,22 @@
                 clearInterval(checkInterval);
                 callback(null);
             }
-        };
-
-        const checkInterval = setInterval(checkElement, interval);
-        checkElement();
+        }, interval);
+        const initialElement = document.querySelector(selector);
+        if (initialElement && initialElement.offsetParent !== null) {
+            clearInterval(checkInterval);
+            callback(initialElement);
+        }
     }
 
     function safeClick(element, elementName = 'phần tử') {
-        if (!element) {
-            updateScriptStatus(`Lỗi: Không click được ${elementName} (null).`, 'error');
+        if (!element || element.offsetParent === null) {
+            updateScriptStatus(`Lỗi: Không thể click ${elementName} (phần tử không tồn tại hoặc không hiển thị).`, 'error');
             return false;
         }
-        if (element.offsetParent === null) {
-            updateScriptStatus(`${elementName} không hiển thị hoặc không tương tác.`, 'warn');
-            return false;
-        }
-
         try {
             updateScriptStatus(`Đang click ${elementName} bằng dispatchEvent.`);
-            const mouseEvent = new MouseEvent('click', {
-                view: window, bubbles: true, cancelable: true
-            });
+            const mouseEvent = new MouseEvent('click', { view: window, bubbles: true, cancelable: true });
             element.dispatchEvent(mouseEvent);
             updateScriptStatus(`Đã click ${elementName} thành công!`, 'success');
             return true;
@@ -110,14 +104,14 @@
             const timeText = cooldownTimerElement.textContent.trim();
             const parts = timeText.split(':').map(Number);
             let seconds = 0;
-            if (parts.length === 3) { // HH:MM:SS
+            if (parts.length === 3) {
                 seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-            } else if (parts.length === 2) { // MM:SS
+            } else if (parts.length === 2) {
                 seconds = parts[0] * 60 + parts[1];
-            } else if (parts.length === 1) { // SS (less common, but for safety)
+            } else if (parts.length === 1) {
                 seconds = parts[0];
             }
-            return seconds * 1000; // Convert to milliseconds
+            return seconds * 1000;
         }
         return 0;
     }
@@ -143,11 +137,13 @@
         return storedState === null ? true : JSON.parse(storedState);
     }
 
-    function setAutoClickStateInStorage(enabled) {
-        localStorage.setItem(AUTO_CLICK_TOGGLE_KEY, JSON.stringify(enabled));
+    function setAutoClickState(enabled, saveToStorage = false) {
         isAutoClickEnabled = enabled;
-        updateScriptStatus(enabled ? 'Tự động click đã BẬT.' : 'Tự động click đã TẮT.', 'info');
+        if (saveToStorage) {
+            localStorage.setItem(AUTO_CLICK_TOGGLE_KEY, JSON.stringify(enabled));
+        }
 
+        updateScriptStatus(enabled ? 'Tự động thí luyện đã BẬT.' : 'Tự động thí luyện đã TẮT.', 'info');
         const toggleSwitch = document.getElementById('autoClickToggleSwitch');
         if (toggleSwitch) {
             toggleSwitch.checked = enabled;
@@ -156,46 +152,70 @@
         if (!enabled) {
             if (mainLoopTimeoutId) clearTimeout(mainLoopTimeoutId);
             mainLoopTimeoutId = null;
-            updateScriptStatus('Vòng lặp tự động click đã dừng.', 'info');
+            updateScriptStatus('Vòng lặp tự động đã dừng.', 'info');
         } else if (enabled && !mainLoopTimeoutId) {
             startMainLoop();
         }
     }
 
     // ===============================================
-    // HÀM XỬ LÝ GAMEPLAY CHÍNH
+    // HÀM XỬ LÝ CHÍNH
     // ===============================================
+
+    async function checkCompletionAndStop() {
+        updateScriptStatus(`Đang kiểm tra thông báo hoàn thành nhiệm vụ...`, 'info');
+        await sleep(TOAST_CHECK_DELAY);
+
+        const completionToast = document.querySelector('.toast.error span');
+        if (completionToast && completionToast.textContent.includes('Đã hoàn thành Thí Luyện Tông Môn hôm nay')) {
+            updateScriptStatus('Phát hiện thông báo hoàn thành nhiệm vụ. Dừng script.', 'success');
+
+            // Dừng vòng lặp nhưng không thay đổi giá trị trong localStorage
+            if (mainLoopTimeoutId) {
+                clearTimeout(mainLoopTimeoutId);
+                mainLoopTimeoutId = null;
+            }
+            return true;
+        }
+        return false;
+    }
 
     async function checkAndClickChest() {
         if (!isAutoClickEnabled) {
-            updateScriptStatus('Tự động click đang TẮT. Bỏ qua.', 'info');
+            updateScriptStatus('Tự động thí luyện đang TẮT. Bỏ qua.', 'info');
             return;
         }
 
         const chestImage = document.querySelector('img#chestImage');
         const gameCooldownTimer = document.querySelector('#countdown-timer');
 
+        // Kiểm tra ngay xem nhiệm vụ đã xong chưa trước khi thực hiện bất kỳ hành động nào
+        if (await checkCompletionAndStop()) {
+             return;
+        }
+
         if (chestImage) {
             const isChestVisible = chestImage.offsetParent !== null;
-
             if (gameCooldownTimer && gameCooldownTimer.offsetParent !== null) {
                 const remainingMilliseconds = getCooldownTimeFromElement(gameCooldownTimer);
-
                 if (remainingMilliseconds > 0) {
                     const delayToNextCheck = remainingMilliseconds + COOLDOWN_BUFFER_MS;
                     const nextClickTimestamp = Date.now() + delayToNextCheck;
-                    updateScriptStatus(`Chờ hồi chiêu. Sẽ kiểm tra lại vào ${formatTimeForDisplay(nextClickTimestamp)}.`, 'info');
+                    updateScriptStatus(`Đang chờ hồi chiêu. Sẽ kiểm tra lại vào ${formatTimeForDisplay(nextClickTimestamp)}.`, 'info');
                     mainLoopTimeoutId = setTimeout(checkAndClickChest, delayToNextCheck);
                 } else {
                     updateScriptStatus('Rương đã sẵn sàng, chờ click.', 'info');
                     if (isChestVisible) {
                         await sleep(DELAY_BEFORE_CLICK);
                         if (safeClick(chestImage, 'hình ảnh "Thí Luyện" rương')) {
-                            updateScriptStatus('Đã click rương thành công! Đang chờ lượt tiếp theo.', 'success');
-                            mainLoopTimeoutId = setTimeout(checkAndClickChest, CHECK_INTERVAL_AFTER_ACTION_MS); // Schedule next check after click
+                            updateScriptStatus('Đã click rương thành công! Đang kiểm tra trạng thái hoàn thành...', 'success');
+                            if (await checkCompletionAndStop()) {
+                                return;
+                            }
+                            mainLoopTimeoutId = setTimeout(checkAndClickChest, CHECK_INTERVAL_AFTER_ACTION_MS);
                         } else {
                             updateScriptStatus('Không thể click rương. Sẽ thử lại sau.', 'warn');
-                            mainLoopTimeoutId = setTimeout(checkAndClickChest, CHECK_INTERVAL_AFTER_ACTION_MS); // Retry after some time
+                            mainLoopTimeoutId = setTimeout(checkAndClickChest, CHECK_INTERVAL_AFTER_ACTION_MS);
                         }
                     } else {
                         updateScriptStatus('Rương chưa hiển thị, đang chờ.', 'info');
@@ -207,11 +227,14 @@
                 if (isChestVisible) {
                     await sleep(DELAY_BEFORE_CLICK);
                     if (safeClick(chestImage, 'hình ảnh "Thí Luyện" rương')) {
-                        updateScriptStatus('Đã click rương thành công! Đang chờ lượt tiếp theo.', 'success');
-                        mainLoopTimeoutId = setTimeout(checkAndClickChest, CHECK_INTERVAL_AFTER_ACTION_MS); // Schedule next check after click
+                        updateScriptStatus('Đã click rương thành công! Đang kiểm tra trạng thái hoàn thành...', 'success');
+                        if (await checkCompletionAndStop()) {
+                             return;
+                        }
+                        mainLoopTimeoutId = setTimeout(checkAndClickChest, CHECK_INTERVAL_AFTER_ACTION_MS);
                     } else {
                         updateScriptStatus('Không thể click rương. Sẽ thử lại sau.', 'warn');
-                        mainLoopTimeoutId = setTimeout(checkAndClickChest, CHECK_INTERVAL_AFTER_ACTION_MS); // Retry after some time
+                        mainLoopTimeoutId = setTimeout(checkAndClickChest, CHECK_INTERVAL_AFTER_ACTION_MS);
                     }
                 } else {
                     updateScriptStatus('Rương chưa hiển thị, đang chờ.', 'info');
@@ -278,22 +301,17 @@
                 color: #ADD8E6;
                 white-space: nowrap;
             }
-            /* Styles for the toggle switch */
             .switch {
                 position: relative;
                 display: inline-block;
-                width: 38px; /* Adjusted width */
-                height: 22px; /* Adjusted height */
+                width: 38px;
+                height: 22px;
             }
-
-            /* Hide default HTML checkbox */
             .switch input {
                 opacity: 0;
                 width: 0;
                 height: 0;
             }
-
-            /* The slider */
             .slider {
                 position: absolute;
                 cursor: pointer;
@@ -304,36 +322,31 @@
                 background-color: #ccc;
                 -webkit-transition: .4s;
                 transition: .4s;
-                border-radius: 22px; /* Makes it round */
+                border-radius: 22px;
             }
-
             .slider:before {
                 position: absolute;
                 content: "";
-                height: 16px; /* Adjusted height */
-                width: 16px; /* Adjusted width */
-                left: 3px; /* Adjusted position */
-                bottom: 3px; /* Adjusted position */
+                height: 16px;
+                width: 16px;
+                left: 3px;
+                bottom: 3px;
                 background-color: white;
                 -webkit-transition: .4s;
                 transition: .4s;
-                border-radius: 50%; /* Makes the circle */
+                border-radius: 50%;
             }
-
             input:checked + .slider {
-                background-color: #4CAF50; /* Green when checked */
+                background-color: #4CAF50;
             }
-
             input:focus + .slider {
                 box-shadow: 0 0 1px #4CAF50;
             }
-
             input:checked + .slider:before {
-                -webkit-transform: translateX(16px); /* Adjusted translation */
-                -ms-transform: translateX(16px); /* Adjusted translation */
-                transform: translateX(16px); /* Adjusted translation */
+                -webkit-transform: translateX(16px);
+                -ms-transform: translateX(16px);
+                transform: translateX(16px);
             }
-
             #hh3dThiLuyenConfig #scriptStatus {
                 font-size: 11px;
                 color: #B0C4DE;
@@ -345,8 +358,6 @@
                 line-height: 1.4;
             }
         `);
-
-        // Find the target element to insert the UI below
         waitForElementStable('#countdown-timer', (targetDiv) => {
             if (targetDiv && !isUIMade) {
                 const configDiv = document.createElement('div');
@@ -361,17 +372,13 @@
                     </div>
                     <span id="scriptStatus">Trạng thái: Đang khởi tạo...</span>
                 `;
-
-                // Insert the new UI div right after the #countdown-timer div
                 targetDiv.parentNode.insertBefore(configDiv, targetDiv.nextSibling);
-
-                scriptStatusElement = configDiv.querySelector('#scriptStatus'); // Get reference to the status element
+                scriptStatusElement = configDiv.querySelector('#scriptStatus');
                 const toggleSwitch = configDiv.querySelector('#autoClickToggleSwitch');
                 toggleSwitch.checked = isAutoClickEnabled;
                 toggleSwitch.addEventListener('change', (event) => {
-                    setAutoClickStateInStorage(event.target.checked);
+                    setAutoClickState(event.target.checked, true);
                 });
-
                 isUIMade = true;
                 updateScriptStatus('Giao diện đã sẵn sàng.', 'info');
             }
@@ -388,23 +395,16 @@
             return;
         }
         isScriptFullyInitialized = true;
-
         updateScriptStatus('Đang khởi tạo script và UI...', 'info');
-
-        // Add initial delay
         await sleep(INITIAL_SCRIPT_DELAY);
-
-        // Create UI first before starting main loop
         createMainUI();
-
-        // Wait for UI elements to be available before setting initial status
         waitForElementStable('#scriptStatus', () => {
             if (isAutoClickEnabled) {
                 startMainLoop();
             } else {
-                updateScriptStatus('Tự động click đang TẮT. Bật để bắt đầu.', 'info');
+                updateScriptStatus('Tự động thí luyện đang TẮT. Bật để bắt đầu.', 'info');
             }
-        }, 5000); // Give enough time for UI to be rendered
+        }, 5000);
     }
 
     function startMainLoop() {
@@ -416,27 +416,19 @@
         }
     }
 
-    // --- Entry Point ---
-    // Use DOMContentLoaded to ensure basic DOM is ready before trying to initialize
     window.addEventListener('DOMContentLoaded', () => {
         initializeScript();
     });
 
-    // Fallback MutationObserver for dynamic content if DOMContentLoaded is too early
     const observer = new MutationObserver((mutations, obs) => {
-        // Only try to initialize if script hasn't been fully initialized yet
         if (!isScriptFullyInitialized) {
-            // Check for presence of key game elements indicating the page is loaded enough
             if (document.querySelector('img#chestImage') || document.querySelector('#countdown-timer')) {
                 initializeScript();
             }
         }
     });
-
-    // Start observing the body for changes
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Optional: Global function to stop the script manually from console
     window.stopAutoThiLuyenScript = () => {
         if (mainLoopTimeoutId) {
             clearTimeout(mainLoopTimeoutId);

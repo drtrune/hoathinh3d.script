@@ -4,7 +4,7 @@
 // @version      2.9
 // @description  Tự động chúc phúc và nhận lì xì
 // @author       Dr. Trune
-// @match        https://hoathinh3d.gg/phong-cuoi*
+// @match        https://hoathinh3d.mx/phong-cuoi*
 // @grant        none
 // ==/UserScript==
 

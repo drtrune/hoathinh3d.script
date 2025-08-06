@@ -4,7 +4,7 @@
 // @version      3.3
 // @description  Tự động hóa quá trình khai thác khoáng mạch: chọn mỏ cụ thể, điều hướng, vào mỏ, xem chi tiết, kiểm tra và nhận thưởng theo điều kiện.
 // @author       Dr. Trune
-// @match        https://hoathinh3d.gg/khoang-mach*
+// @match        https://hoathinh3d.mx/khoang-mach*
 // @grant        none
 // ==/UserScript==
 

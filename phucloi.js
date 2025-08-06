@@ -4,7 +4,7 @@
 // @version     1.0
 // @description Tự động hóa mở rương phúc lợi và nhận thưởng cột mốc
 // @author      Dr.Trune
-// @match       https://hoathinh3d.gg/phuc-loi-duong*
+// @match       https://hoathinh3d.mx/phuc-loi-duong*
 // @grant       none
 // ==/UserScript==
 

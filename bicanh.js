@@ -193,26 +193,102 @@ const INITIAL_SCRIPT_DELAY = 2000; // Thời gian chờ ban đầu (ms) trước
     // HÀM XỬ LÝ GAMEPLAY CHÍNH
     // ===============================================
     async function handleClaimReward() {
-        updateScriptStatus('Đang kiểm tra xem có phần thưởng để nhận không...', 'info');
+        updateScriptStatus('Đang kiểm tra phần thưởng hoặc hiến tế...', 'info');
         const claimRewardBtn = document.querySelector('button#claim-reward-btn');
+        const contributeBossBtn = document.querySelector('button#contribute-boss-btn.contribute-btn');
+        const confirmBtn = document.querySelector('button#custom-confirm-yes.confirm-btn');
+        const contributedBtn = document.querySelector('button.contribute-btn.contributed[disabled]');
 
+        // 1. Ưu tiên nhận thưởng
         if (claimRewardBtn) {
             updateScriptStatus('Đã tìm thấy nút "Nhận Thưởng". Đang click...', 'success');
             await sleep(DELAY_BEFORE_CLICK);
             if (safeClick(claimRewardBtn, 'nút "Nhận Thưởng"')) {
                 updateScriptStatus('Đã nhận thưởng thành công. Đang tải lại trang...', 'success');
-                // Thêm lệnh tải lại trang ở đây
                 setTimeout(() => {
                     location.reload();
-                }, 1000); // Chờ 1 giây để đảm bảo hành động click đã được xử lý
+                }, 1000);
                 return true;
             } else {
                 updateScriptStatus('Không click được nút "Nhận Thưởng". Vui lòng thử lại thủ công.', 'error');
+                return true;
             }
         }
-        updateScriptStatus('Không có phần thưởng để nhận. Chuyển sang tìm boss.', 'info');
+
+        // 2. Nếu có nút "Hiến Tế", click trước
+        if (contributeBossBtn) {
+            updateScriptStatus('Đã tìm thấy nút "Hiến Tế". Đang click...', 'success');
+            await sleep(DELAY_BEFORE_CLICK);
+            if (safeClick(contributeBossBtn, 'nút "Hiến Tế"')) {
+                updateScriptStatus('Đã click nút "Hiến Tế", chờ xác nhận...', 'success');
+                // Chờ popup xác nhận xuất hiện và click luôn nếu có
+                for (let i = 0; i < 10; i++) { // Tối đa 10 lần, mỗi lần 500ms
+                    await sleep(500);
+                    const confirmBtn = document.querySelector('button#custom-confirm-yes.confirm-btn');
+                    if (confirmBtn) {
+                        updateScriptStatus('Đã tìm thấy nút xác nhận hiến tế sau khi click "Hiến Tế". Đang click...', 'success');
+                        await sleep(DELAY_BEFORE_CLICK);
+                        if (safeClick(confirmBtn, 'nút "Xác nhận Hiến Tế"')) {
+                            updateScriptStatus('Đã xác nhận hiến tế thành công. Đang tải lại trang...', 'success');
+                            await sleep(1000);
+                            location.reload();
+                        }
+                        break;
+                    }
+                }
+            } else {
+                updateScriptStatus('Không click được nút "Hiến Tế". Vui lòng thử lại thủ công.', 'error');
+            }
+            return true;
+        }
+
+        // 3. Nếu có popup xác nhận hiến tế thì click xác nhận
+        if (confirmBtn) {
+            updateScriptStatus('Đã tìm thấy nút xác nhận hiến tế. Đang click...', 'success');
+            await sleep(DELAY_BEFORE_CLICK);
+            if (safeClick(confirmBtn, 'nút "Xác nhận Hiến Tế"')) {
+                updateScriptStatus('Đã xác nhận hiến tế thành công. Đang chờ hoàn tất hiến tế...', 'success');
+            } else {
+                updateScriptStatus('Không click được nút xác nhận hiến tế.', 'error');
+            }
+            return true;
+        }
+
+        // 4. Nếu đã hiến tế (có nút "Đã Hiến Tế"), kiểm tra tiến trình
+        if (contributedBtn) {
+            updateScriptStatus('Đã hiến tế xong. Đang kiểm tra tiến trình...', 'success');
+            await waitForProgressFullAndReload();
+            return true;
+        }
+
+        // Nếu không có gì, tiếp tục vòng lặp
+        updateScriptStatus('Không có phần thưởng hoặc hiến tế để nhận. Chuyển sang tìm boss.', 'info');
         return false;
     }
+
+    // Hàm chờ tiến trình hiến tế đạt 100% rồi reload trang
+    async function waitForProgressFullAndReload() {
+        updateScriptStatus('Đang chờ tiến độ hiến tế đạt 100%...', 'info');
+        for (let i = 0; i < 60; i++) { // Tối đa 60 lần (60 giây)
+            const progressDiv = document.querySelector('div.progress-info');
+            if (progressDiv) {
+                const match = progressDiv.textContent.trim().match(/^(\d+)\s*\/\s*(\d+)$/);
+                if (match) {
+                    const current = parseInt(match[1], 10);
+                    const total = parseInt(match[2], 10);
+                    if (current >= total) {
+                        updateScriptStatus('Tiến độ đã đạt 100%. Đang tải lại trang...', 'success');
+                        await sleep(1000);
+                        location.reload();
+                        return;
+                    }
+                }
+            }
+            await sleep(1000);
+        }
+        updateScriptStatus('Chờ tiến độ quá lâu, tự động tiếp tục vòng lặp.', 'warn');
+    }
+
     async function checkAndClickBoss() {
         const rewardHandled = await handleClaimReward();
         if (rewardHandled) {

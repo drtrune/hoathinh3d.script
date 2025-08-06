@@ -86,7 +86,7 @@
      */
     async function tryOpenLixi() {
         console.log(`[HH3D Tối ưu] Bắt đầu tìm lì xì, thử tối đa ${LIXI_CHECK_RETRIES} lần.`);
-        for (let i = 0; i &lt; LIXI_CHECK_RETRIES; i++) {
+        for (let i = 0; i < LIXI_CHECK_RETRIES; i++) {
             // Dùng XPath để tìm chính xác hơn
             const lixiMessageP = document.evaluate(`//p[contains(text(), "${LIXI_MODAL_TEXT}")]`, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
 

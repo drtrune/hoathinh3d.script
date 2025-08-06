@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tiên duyên
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      3.2
+// @version      3.3
 // @description  Tự động chúc phúc, nhận lì xì
 // @author       Dr. Trune
 // @match        https://hoathinh3d.mx/phong-cuoi*

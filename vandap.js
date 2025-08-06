@@ -4,7 +4,7 @@
 // @version      1.9
 // @description  Tự động giải Vấn Đáp Tổng Môn trên Hoathinh3d
 // @author       Dr. Trune
-// @match        https://hoathinh3d.gg/van-dap-tong-mon*
+// @match        https://hoathinh3d.mx/van-dap-tong-mon*
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
 // ==/UserScript==

@@ -4,7 +4,7 @@
 // @version      1.3
 // @description  Tự động click nút "Tế Lễ" và xác nhận trên trang Danh Sách Thành Viên Tông Môn. Không có log chi tiết.
 // @author       Dr. Trune
-// @match        https://hoathinh3d.gg/danh-sach-thanh-vien-tong-mon*
+// @match        https://hoathinh3d.mx/danh-sach-thanh-vien-tong-mon*
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==

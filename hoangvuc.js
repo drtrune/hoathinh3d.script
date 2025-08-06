@@ -4,7 +4,6 @@
 // @version      4.6
 // @description  Tự động nhận thưởng. Tự động tối ưu ngũ hành và chiến đấu theo chu kỳ.
 // @author       Dr. Trune
-// @match        https://hoathinh3d.gg/hoang-vuc*
 // @grant        none
 // ==/UserScript==
 

@@ -4,7 +4,7 @@
 // @version      2.3
 // @description  Tự động gia nhập trận đấu, bật auto-accept, nhận thưởng và rút ngắn thời gian chờ trong Luận Võ Đường
 // @author       Dr. Trune
-// @match        https://hoathinh3d.gg/luan-vo-duong*
+// @match        https://hoathinh3d.mx/luan-vo-duong*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==

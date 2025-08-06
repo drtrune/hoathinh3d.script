@@ -29,6 +29,7 @@
         TIMEOUT_CLICK_DELAY: 500, // Độ trễ trước khi click
         TIMEOUT_PAGE_NAV_WAIT: 2000, // 2 giây chờ sau khi chuyển trang/vào mỏ
         TIMEOUT_RELOAD: 5000, // Reload sau khi buff mỏ
+        MINECHECKINTERVAL = 60*1000, // 1 phút kiểm tra lại mỏ
     };
 
     let selectedMineId = localStorage.getItem(CONFIG.LOCAL_STORAGE_PREFIX + 'id') || CONFIG.DEFAULT_MINE_ID;
@@ -403,14 +404,8 @@
                         case 'any':
                             shouldClaim = true;
                             break;
-                        case '0%':
-                            shouldClaim = tuviBonus > 0;
-                            break;
                         case '20%':
                             shouldClaim = tuviBonus >= 20;
-                            break;
-                        case '50%':
-                            shouldClaim = tuviBonus >= 50;
                             break;
                         case '100%':
                             shouldClaim = tuviBonus >= 100;
@@ -434,12 +429,11 @@
                     }
                 }
             } else if (remainingTimeMs > 0) { // Still mining
-                const waitTime = remainingTimeMs + 10000;
-                updateStatus(`Đang khai thác. Sẽ kiểm tra lại sau ${Math.ceil(waitTime / 1000)}s.`);
-                setNextCycleTimer(waitTime);
+                updateStatus(`Đang khai thác. Sẽ kiểm tra lại sau ${Math.ceil(CONFIG.MINECHECKINTERVAL / 1000)}s.`);
+                setNextCycleTimer(CONFIG.MINECHECKINTERVAL);
             } else { // remainingTimeMs === -1 (couldn't read)
                 updateStatus('Không đọc được thời gian khai thác. Thử lại sau 1 phút.');
-                setNextCycleTimer(60 * 1000);
+                setNextCycleTimer(CONFIG.MINECHECKINTERVAL);
             }
         } else {
             updateStatus('Không tìm thấy hàng của người chơi. Thử lại sau.');
@@ -606,7 +600,7 @@
         updateStatus('Bắt đầu chu kỳ khai thác mới...');
         console.log('--- [Auto Khoáng Mạch] Starting new mining cycle. ---');
 
-        // Thêm chức năng kiểm tra Tu Vi tại đây
+        // Kiểm tra Tu Vi trước khi bắt đầu khai thác.
         if (checkMaxTuVi()) {
             stopAuto();
             updateStatus('Tu Vi đã đạt tối đa. Tự động dừng.');

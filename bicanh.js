@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Bí Cảnh Tông Môn
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      1.9
+// @version      2.0
 // @description  Tự động khiêu chiến và tấn công boss trong Bí Cảnh Tông Môn. Tự nhận thưởng. Tích hợp UI nút toggle, hiển thị trạng thái, tạm dừng khi hết lượt.
 // @author       Dr.Trune
 // @match        https://hoathinh3d.mx/bi-canh-tong-mon*

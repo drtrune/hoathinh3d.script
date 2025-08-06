@@ -90,19 +90,14 @@
     }
     // Hàm chờ và click
     function waitForElementAndClick(selector, actionName, callback) {
-        const checkExist = setInterval(() => {
-            const element = document.querySelector(selector);
+        waitForElementStable(selector, (element) => {
             if (element) {
-                clearInterval(checkExist);
-                console.log(`[Auto Khoáng Mạch] Found "${selector}" for action: ${actionName}.`);
                 safeClick(element, actionName);
                 if (callback) callback();
+            } else {
+                console.log(`[Auto Khoáng Mạch] Timeout: Cannot find "${selector}" for action: ${actionName}.`);
             }
-        }, 500); // Kiểm tra mỗi 500ms
-        setTimeout(() => {
-            clearInterval(checkExist);
-            console.log(`[Auto Khoáng Mạch] Timeout: Cannot find "${selector}" for action: ${actionName}.`);
-        }, 5000); // Timeout sau 5s
+        }, 5000, 500);
     }
     /**
      * Chờ một phần tử xuất hiện trong DOM, hiển thị và không bị disabled.

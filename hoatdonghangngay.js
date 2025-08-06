@@ -4,7 +4,7 @@
 // @version     1.5
 // @description Tự động mở rương thưởng hàng ngày, thêm nút chuyển trang Vòng Quay Phúc Vận và các nút điều hướng đến từng nhiệm vụ chưa hoàn thành.
 // @author      Dr. Trune
-// @match       https://hoathinh3d.gg/bang-hoat-dong-ngay*
+// @match       https://hoathinh3d.mx/bang-hoat-dong-ngay*
 // @grant       none
 // ==/UserScript==
 

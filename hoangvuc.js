@@ -227,7 +227,7 @@
     }
 
     // Initiates battle by clicking "Khiêu chiến"
-    function startBattleNow() {
+        function startBattleNow() {
         updateScriptStatus('Đang khiêu chiến...');
         const battleButtonSelector = 'button.battle-button#battle-button';
 
@@ -235,13 +235,18 @@
             if (battleButton) {
                 setTimeout(() => {
                     if (safeClick(battleButton, 'nút "Khiêu chiến"')) {
+                        // Sau khi khiêu chiến, gọi hàm clickAttackButton (hàm này sẽ tự chờ nút tấn công xuất hiện)
                         clickAttackButton();
+                        // Sau khi tấn công, chờ thêm rồi reload page
+                        setTimeout(() => {
+                            location.reload();
+                        }, DELAY_BEFORE_CLICK + 2000);
                     } else {
-                        setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_LONG); // Retry main loop
+                        setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_LONG);
                     }
                 }, DELAY_BEFORE_CLICK);
             } else {
-                setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_LONG); // Retry main loop
+                setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_LONG);
             }
         }, TIMEOUT_ELEMENT_STABLE);
     }
@@ -250,68 +255,17 @@
     function clickAttackButton() {
         updateScriptStatus('Đang tấn công...');
         const attackButtonSelector = 'button.attack-button';
-
+    
         waitForElementStable(attackButtonSelector, (attackButton) => {
             if (attackButton) {
                 setTimeout(() => {
-                    if (safeClick(attackButton, 'nút "Tấn Công"')) {
-                        // After initiating attack, wait for post-battle state (reward/back button)
-                        setTimeout(() => {
-                            checkPostBattleState();
-                        }, DELAY_AFTER_ELEMENT_CHANGE); // Give a bit of time for battle to conclude or state to change
-                    } else {
-                        setTimeout(clickAttackButton, DELAY_BETWEEN_RETRIES_SHORT);
-                    }
+                    safeClick(attackButton, 'nút "Tấn Công"');
                 }, DELAY_BEFORE_CLICK + 1000); // Slightly longer delay for attack button
-            } else {
-                setTimeout(clickAttackButton, DELAY_BETWEEN_RETRIES_SHORT);
             }
         }, TIMEOUT_ELEMENT_STABLE + 5000); // More time for attack button as it appears after battle start
     }
 
-    // Checks post-battle state (Reward or Back button)
-    function checkPostBattleState() {
-        updateScriptStatus('Đang chờ kết quả trận đấu...');
-
-        waitForElementStable('button#reward-button.reward-button', (rewardButton) => {
-            if (rewardButton) {
-                updateScriptStatus('Đã tìm thấy: Nhận thưởng.');
-                setTimeout(() => {
-                    if (safeClick(rewardButton, 'nút "Nhận thưởng"')) {
-                        clickRewardCloseButtonAndThenWaitForModalToClose(() => {
-                            checkRemainingAttacksThenContinue(); // Back to main loop after collecting reward
-                        });
-                    } else {
-                        setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
-                    }
-                }, DELAY_BEFORE_CLICK);
-            } else {
-                clickBackButton();
-            }
-        }, TIMEOUT_ELEMENT_STABLE);
-    }
-
-    // Clicks the "Trở lại" button
-    function clickBackButton() {
-        updateScriptStatus('Đang đóng hộp thoại...');
-        const backButtonSelector = 'button.back-button';
-
-        waitForElementStable(backButtonSelector, (backButton) => {
-            if (backButton) {
-                setTimeout(() => {
-                    if (safeClick(backButton, 'nút "Trở lại"')) {
-                        waitForModalToClose(() => {
-                            checkRemainingAttacksThenContinue(); // Back to main loop after clicking back
-                        }, 'hộp thoại trở lại');
-                    } else {
-                        setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
-                    }
-                }, DELAY_BEFORE_CLICK);
-            } else {
-                setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_SHORT);
-            }
-        }, TIMEOUT_ELEMENT_STABLE);
-    }
+    
 
     // Checks remaining attacks and decides whether to continue the cycle or stop
     function checkRemainingAttacksThenContinue() {
@@ -348,43 +302,18 @@
             let cooldownMs = getCooldownTimeFromElement(cooldownTimerElement);
             if (cooldownMs > 0) {
                 const endTime = Date.now() + cooldownMs + COOLDOWN_BUFFER_MS;
-                
-                // Clear any existing countdown interval
-                if (cooldownCountdownIntervalId) clearInterval(cooldownCountdownIntervalId);
+                const nextBattleTime = new Date(endTime);
+                const h = String(nextBattleTime.getHours()).padStart(2, '0');
+                const m = String(nextBattleTime.getMinutes()).padStart(2, '0');
+                const s = String(nextBattleTime.getSeconds()).padStart(2, '0');
+                updateScriptStatus(`Đang hồi chiêu. Sẽ đánh boss lại lúc ${h}:${m}:${s}`);
 
-                // Start updating UI every second
-                cooldownCountdownIntervalId = setInterval(() => {
-                    const remainingTime = endTime - Date.now();
-                    if (remainingTime > 0) {
-                        const totalSeconds = Math.ceil(remainingTime / 1000);
-                        const minutes = Math.floor(totalSeconds / 60);
-                        const seconds = totalSeconds % 60;
-                        updateScriptStatus(`Đang chờ hồi chiêu (${minutes}m ${seconds}s)...`);
-                    } else {
-                        // Cooldown finished, clear interval and proceed
-                        clearInterval(cooldownCountdownIntervalId);
-                        cooldownCountdownIntervalId = null;
-                        checkRemainingAttacksThenContinue(); // Re-enter loop after cooldown
-                    }
-                }, 1000); // Update every 1 second
-
-                // Set a single timeout for when the cooldown is actually over
-                if (currentTimerId) clearTimeout(currentTimerId); // Clear old timer
+                // Dùng setTimeout thay vì setInterval
+                if (currentTimerId) clearTimeout(currentTimerId);
                 currentTimerId = setTimeout(() => {
-                    // This timeout will trigger after the countdown interval has already handled the 'remainingTime <= 0' case.
-                    // It's a fallback to ensure the main flow continues even if the interval somehow gets stuck.
-                    if (cooldownCountdownIntervalId) clearInterval(cooldownCountdownIntervalId);
-                    cooldownCountdownIntervalId = null;
-                    // `checkRemainingAttacksThenContinue` should be called by the interval's `remainingTime <= 0` logic.
-                    // If this timeout triggers, it means the interval logic might not have, so call it here as a safety.
-                    if (!document.querySelector('#countdown-timer') || getCooldownTimeFromElement(document.querySelector('#countdown-timer')) === 0) {
-                         checkRemainingAttacksThenContinue();
-                    }
-                }, cooldownMs + COOLDOWN_BUFFER_MS + 2000); // Add a bit more buffer for the final timeout
-
+                    checkRemainingAttacksThenContinue();
+                }, endTime - Date.now());
             } else {
-                if (cooldownCountdownIntervalId) clearInterval(cooldownCountdownIntervalId); // Ensure interval is clear
-                cooldownCountdownIntervalId = null;
                 processElementAndBattle();
             }
         }, TIMEOUT_ELEMENT_STABLE);
@@ -539,7 +468,9 @@
                 setTimeout(() => {
                     if (safeClick(rewardButton, 'nút "Nhận thưởng" khởi động')) {
                         clickRewardCloseButtonAndThenWaitForModalToClose(() => {
-                            checkRemainingAttacksThenContinue(); // Start normal cycle
+                            setTimeout(() => {
+                                checkRemainingAttacksThenContinue(); // Reload logic sau 1s
+                            }, 1000);
                         });
                     } else {
                         checkRemainingAttacksThenContinue(); // Continue to battle cycle if reward click fails

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        HH3D Phúc lợi
 // @namespace   https://github.com/drtrune/hoathinh3d.script
-// @version     1.0
+// @version     1.1
 // @description Tự động hóa mở rương phúc lợi và nhận thưởng cột mốc
 // @author      Dr.Trune
 // @match       https://hoathinh3d.mx/phuc-loi-duong*
@@ -22,7 +22,8 @@
     // CẤU HÌNH BAN ĐẦU VÀ BIẾN TOÀN CỤC
     // ===============================================
     const LOCAL_STORAGE_KEY_TOGGLE = 'autoOpenChest_enabled';
-    let isAutoRunOnLoadEnabled = localStorage.getItem(LOCAL_STORAGE_KEY_TOGGLE) === 'true';
+    // Mặc định là true nếu chưa từng lưu trong localStorage
+    let isAutoRunOnLoadEnabled = localStorage.getItem(LOCAL_STORAGE_KEY_TOGGLE) === null ? true : localStorage.getItem(LOCAL_STORAGE_KEY_TOGGLE) === 'true';
     let isScriptRunning = isAutoRunOnLoadEnabled;
 
     let currentTimerId = null;
@@ -99,17 +100,6 @@
         return 0;
     }
 
-    /**
-     * Định dạng mili giây thành chuỗi "mm m ss s" để hiển thị dễ đọc.
-     * @param {number} ms - Thời gian tính bằng mili giây.
-     * @returns {string} Chuỗi định dạng thời gian.
-     */
-    function formatMsToTime(ms) {
-        const totalSeconds = Math.ceil(ms / 1000);
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        return `${minutes.toString().padStart(2, '0')}p ${seconds.toString().padStart(2, '0')}s`;
-    }
 
     // ===============================================
     // HÀM XỬ LÝ CHỨC NĂNG CHÍNH
@@ -175,7 +165,11 @@
 
             if (cooldownMs > 0) {
                 const totalWaitTime = cooldownMs + COOLDOWN_BUFFER_MS;
-                updateScriptStatus(`Rương ${chestName} đang hồi chiêu (${formatMsToTime(totalWaitTime)}). Đang chờ...`);
+                const nextOpenTime = new Date(Date.now() + totalWaitTime);
+                const h = String(nextOpenTime.getHours()).padStart(2, '0');
+                const m = String(nextOpenTime.getMinutes()).padStart(2, '0');
+                const s = String(nextOpenTime.getSeconds()).padStart(2, '0');
+                updateScriptStatus(`Rương ${chestName} đang hồi chiêu. Sẽ mở lúc ${h}:${m}:${s}`);
 
                 if (currentTimerId) clearTimeout(currentTimerId);
                 currentTimerId = setTimeout(() => {

@@ -47,10 +47,12 @@
     const ALREADY_BLESSED_MESSAGE = "Đạo hữu đã gửi lời chúc phúc cho cặp đôi này! 🌸";
     const REWARD_RECEIVED_MESSAGE = "Chúc mừng đạo hữu đã nhận được phần thưởng!";
     const LIXI_MODAL_TEXT = "Đạo hữu là vị khách may mắn nhận được lì xì từ chủ tiệc cưới. Hãy mở để xem điều bất ngờ!";
-    const MAIN_CHECK_INTERVAL = 1000;
-    const LIXI_CHECK_INTERVAL = 1000;
-    const LIXI_CHECK_RETRIES = 5;
-    const INTER_ACTION_DELAY = 500;
+    const MAIN_CHECK_INTERVAL = 1000; // Thời gian kiểm tra chính mỗi giây
+    const LIXI_CHECK_INTERVAL = 1000; // Thời gian kiểm tra lì xì mỗi giây
+    const LIXI_CHECK_RETRIES = 15; // Số lần thử tìm lì xì
+    const INTER_ACTION_DELAY = 500; // Thời gian chờ giữa các hành động tương tác
+    let blessingTryCount = 0;
+    const BLESSING_MAX_RETRIES = 5;
 
     let isBlessingProcessActive = false;
     let isLixiProcessActive = false;
@@ -149,14 +151,19 @@
                     stopAutoBlessing();
                 }
             }
-        } else if (!isBlessingProcessActive && !isLixiProcessActive) {
+        } else if (!isBlessingProcessActive && !isLixiProcessActive && blessingTryCount < BLESSING_MAX_RETRIES) {
             const textarea = document.querySelector('textarea.blessing-input#blessing-message');
             if (textarea && textarea.offsetParent !== null && !textarea.disabled) {
+                blessingTryCount++;
+                console.log(`[HH3D Tối ưu] Thử chúc phúc lần thứ ${blessingTryCount}/${BLESSING_MAX_RETRIES}`);
                 const blessingSuccess = await performBlessing();
                 if (blessingSuccess) {
                     hasAttemptedLixiAfterBlessing = false;
                 }
             }
+        } else if (blessingTryCount >= BLESSING_MAX_RETRIES) {
+            console.log('%c[HH3D Tối ưu] Đã thử chúc phúc 5 lần nhưng không thành công. Dừng script.', 'color: orange; font-weight: bold;');
+            stopAutoBlessing();
         }
     }
     function startMainLoop() {

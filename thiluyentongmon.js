@@ -4,7 +4,7 @@
 // @version       1.6
 // @description   Tự động nhận thí luyện
 // @author        Dr. Trune
-// @match         https://hoathinh3d.gg/thi-luyen-tong-mon*
+// @match         https://hoathinh3d.mx/thi-luyen-tong-mon*
 // @grant         none
 // ==/UserScript==
 

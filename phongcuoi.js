@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         HH3D Tiên duyên
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      3.0
-// @description  Tự động chúc phúc, nhận lì xì và chặn các phần tử thừa thãi
+// @version      3.0.1
+// @description  Tự động chúc phúc, nhận lì xì và chặn các phần tử không cần thiết
 // @author       Dr. Trune
 // @match        https://hoathinh3d.mx/phong-cuoi*
-// @grant        none
+// @grant        GM_addStyle
 // @run-at       document-start
 // ==/UserScript==
 
@@ -14,10 +14,10 @@
 
     console.log('[HH3D Tối ưu] Script tải thành công. Thời gian hiện tại:', new Date().toLocaleTimeString());
 
-    // --- Chức năng 1: Chặn các phần tử an toàn (loại trừ phần tử gây lỗi) ---
-    // Loại bỏ 'wedding-progress-container' vì nó gây ra lỗi.
+    // --- Chức năng 1: Chặn các phần tử bằng CSS an toàn ---
     const classesToBlock = [
         'couple-display',
+        'wedding-progress-container', // Bây giờ phần tử này được ẩn an toàn bằng CSS
         'recent-blessings',
         'blessings-container',
         'bg-container',
@@ -26,28 +26,23 @@
         'petals-container'
     ];
 
-    const blockingObserver = new MutationObserver((mutationsList, observer) => {
-        for (const mutation of mutationsList) {
-            for (const node of mutation.addedNodes) {
-                if (node.nodeType === Node.ELEMENT_NODE) {
-                    if (classesToBlock.some(className => node.classList.contains(className))) {
-                        if (node.parentNode) {
-                            node.parentNode.removeChild(node);
-                            console.log(`[HH3D Tối ưu] Đã chặn phần tử: ${node.classList[0]}`);
-                        }
-                    }
-                }
-            }
-        }
-    });
+    let cssToInject = '';
+    for (const className of classesToBlock) {
+        cssToInject += `.${className} { display: none !important; }\n`;
+    }
 
-    blockingObserver.observe(document.documentElement, {
-        childList: true,
-        subtree: true
-    });
+    if (typeof GM_addStyle !== 'undefined') {
+        GM_addStyle(cssToInject);
+    } else {
+        // Fallback cho các trường hợp không hỗ trợ GM_addStyle
+        const style = document.createElement('style');
+        style.textContent = cssToInject;
+        document.head.append(style);
+    }
 
-    // --- Chức năng 2: Tự động chúc phúc và nhận lì xì (không thay đổi) ---
-    // (Đoạn mã từ script cũ của bạn, không có thay đổi nào cần thiết ở đây)
+    console.log('[HH3D Tối ưu] Đã chèn CSS để chặn các phần tử không mong muốn.');
+
+    // --- Chức năng 2: Tự động chúc phúc và nhận lì xì ---
     const WEDDING_BLESSING_MESSAGE = "Chúc mừng hạnh phúc hai bạn! Chúc hai bạn mãi mãi bên nhau và có một cuộc sống tràn ngập niềm vui và tiếng cười!";
     const ALREADY_BLESSED_MESSAGE = "Đạo hữu đã gửi lời chúc phúc cho cặp đôi này! 🌸";
     const REWARD_RECEIVED_MESSAGE = "Chúc mừng đạo hữu đã nhận được phần thưởng!";
@@ -55,7 +50,7 @@
     const MAIN_CHECK_INTERVAL = 1000;
     const LIXI_CHECK_INTERVAL = 1000;
     const LIXI_CHECK_RETRIES = 5;
-    const INTER_ACTION_DELAY = 200;
+    const INTER_ACTION_DELAY = 500;
 
     let isBlessingProcessActive = false;
     let isLixiProcessActive = false;

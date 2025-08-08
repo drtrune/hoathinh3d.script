@@ -15,8 +15,8 @@
 
     // --- Cấu hình ---
     const BET_AMOUNT = 20;
-    const MAIN_CHECK_INTERVAL = 4000;
-    const INTER_ACTION_DELAY = 500;
+    const MAIN_CHECK_INTERVAL = 3000;
+    const INTER_ACTION_DELAY = 200;
     const MAX_BETS_PER_ROUND = 2;
 
     // --- Quản lý tùy chọn bật/tắt tự động đặt cược ---

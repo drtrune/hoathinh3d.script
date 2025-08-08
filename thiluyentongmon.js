@@ -17,7 +17,7 @@
 
     const INITIAL_SCRIPT_DELAY = 500; // Delay trước khi script bắt đầu chạy
     const TIMEOUT_ELEMENT_STABLE = 2000; // 2 giây
-    const INTERVAL_ELEMENT_STABLE = 400; // 0.5 giây
+    const INTERVAL_ELEMENT_STABLE = 200; // 0.5 giây
 
     const COOLDOWN_BUFFER_MS = 2000; // 2 giây đệm thêm sau khi hồi chiêu kết thúc
     const DELAY_BEFORE_CLICK = 200; // delay trước khi thực hiện click

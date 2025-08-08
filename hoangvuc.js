@@ -30,15 +30,15 @@
     const INTERVAL_MODAL_CLOSE = 300;
 
     // Độ trễ trước khi thực hiện click (ms)
-    const DELAY_BEFORE_CLICK = 500; // 0.5 giây
+    const DELAY_BEFORE_CLICK = 200; // 0.5 giây
     // Độ trễ sau khi thay đổi ngũ hành để game kịp cập nhật (ms)
-    const DELAY_AFTER_ELEMENT_CHANGE = 500;
+    const DELAY_AFTER_ELEMENT_CHANGE = 200;
     // Độ trễ khi script cần thử lại một hành động (ms)
-    const DELAY_BETWEEN_RETRIES_SHORT = 500;
+    const DELAY_BETWEEN_RETRIES_SHORT = 200;
     const DELAY_BETWEEN_RETRIES_LONG = 1000;
 
     // Thời gian tối đa chờ nút nhận thưởng khi khởi động (ms)
-    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 1000;
+    const TIMEOUT_REWARD_BUTTON_CHECK_AT_STARTUP = 500;
 
 
     // ===============================================
@@ -240,7 +240,7 @@
                         // Sau khi tấn công, chờ thêm rồi reload page
                         setTimeout(() => {
                             location.reload();
-                        }, DELAY_BEFORE_CLICK + 2000);
+                        }, DELAY_BEFORE_CLICK + 3000);
                     } else {
                         setTimeout(checkRemainingAttacksThenContinue, DELAY_BETWEEN_RETRIES_LONG);
                     }

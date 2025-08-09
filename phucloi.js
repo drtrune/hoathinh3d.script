@@ -141,12 +141,17 @@
         let allOpened = true;
 
         for (const chest of allChests) {
-            if (chest.classList.contains('shake')) {
+            const isOpened = chest.classList.contains('opened');
+            const isShake = chest.classList.contains('shake');
+
+            if (isShake) {
                 foundChestToOpen = chest;
                 allOpened = false;
                 break;
             }
-            if (!chest.classList.contains('opened')) {
+
+            if (!isOpened && !isShake) {
+                // Rương chưa mở và chưa sẵn sàng mở
                 allOpened = false;
             }
         }

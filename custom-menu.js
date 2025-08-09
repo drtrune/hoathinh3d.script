@@ -108,7 +108,7 @@
                 flex-direction: column !important; /* Đặt menu theo chiều dọc */
                 position: absolute;
                 background-color: #242323ff;
-                min-width: 120px;
+                min-width: 250px;
                 z-index: 1001; /* Đảm bảo menu hiển thị trên các phần tử khác */
                 border-radius: 5px;
                 top: calc(100% + 5px); /* Đặt menu bên dưới nút */

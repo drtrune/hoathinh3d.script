@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D - Menu Tùy Chỉnh
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      3.1
+// @version      1.1
 // @description  Chỉ thêm nút menu tuỳ chỉnh
 // @author       Dr. Trune
 // @match        https://hoathinh3d.mx/*
@@ -34,7 +34,7 @@
             name: 'Hoang Vực, Thí Luyện, Phúc Lợi, Bí Cảnh',
             links: [
                 { text: 'Hoang Vực', url: weburl + 'hoang-vuc' },
-                { text: 'Thí Luyện', url: weburl + 'thi-luyen-tong-mon' },
+                { text: 'Thí Luyện', url: weburl + 'thi-luyen-tong-mon-hh3d' },
                 { text: 'Phúc Lợi', url: weburl + 'phuc-loi-duong' },
                 { text: 'Bí Cảnh', url: weburl + 'bi-canh-tong-mon' }
             ]

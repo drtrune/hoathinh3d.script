@@ -70,7 +70,7 @@
         },
         'custom-menu.js': {
             description: 'Script thêm menu tùy chỉnh vào trang.',
-            urlPath: null // Script này sẽ luôn được tải, không phụ thuộc vào URL
+            urlPath: '/' // Script này sẽ luôn được tải, không phụ thuộc vào URL
         }
     };
 

@@ -169,7 +169,7 @@
                     const iconDiv = document.createElement('div');
                     const iconSpan = document.createElement('span');
                     iconSpan.classList.add('material-icons-round1', 'material-icons-menu');
-                    iconSpan.textContent = 'build'; // Icon Material Icons cho menu script
+                    iconSpan.textContent = 'task'; // Icon Material Icons cho menu script
 
                     iconDiv.appendChild(iconSpan);
                     newMenuButton.appendChild(iconDiv);
@@ -214,12 +214,17 @@
                     newMenuButton.addEventListener('click', function(e) {
                         e.preventDefault();
                         dropdownMenu.classList.toggle('hidden');
+                        if (dropdownMenu.classList.contains('hidden')) {
+                            iconSpan.textContent = 'task'; // Đổi icon thành "cancel" khi mở menu
+                        } else {
+                            iconSpan.textContent = 'highlight_off'; // Đổi icon về "task" khi đóng menu
+                        };
                     });
 
                     // 7. Đóng menu khi click ra ngoài
                     document.addEventListener('click', function(e) {
                         if (!customMenuWrapper.contains(e.target)) { // Kiểm tra xem click có nằm ngoài wrapper nút không
-                            dropdownMenu.classList.toggle('hidden');
+                            dropdownMenu.classList.add('hidden');
                         }
                     });
 

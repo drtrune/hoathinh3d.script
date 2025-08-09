@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hoathinh3D Auto
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      1.1
+// @version      1.2
 // @description  Tool tự động cho trang hoathinh3d
 // @author       Dr. Trune
 // @match        https://hoathinh3d.mx/*
@@ -68,6 +68,10 @@
             description: 'Script tự động thí luyện tông môn',
             urlPath: '/thi-luyen-tong-mon-hh3d'
         },
+        'custom-menu.js': {
+            description: 'Script thêm menu tùy chỉnh vào trang.',
+            urlPath: null // Script này sẽ luôn được tải, không phụ thuộc vào URL
+        }
     };
 
     let scriptsToLoadOnThisPage = [];

@@ -712,7 +712,7 @@
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
     font-family: 'Segoe UI', Arial, sans-serif;
     font-size: 13px;
-    z-index: 9999;
+    z-index: 10;
     border: 1px solid #444;
 
     /* Bố cục chính */

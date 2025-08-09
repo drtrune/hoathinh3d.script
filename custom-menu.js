@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D - Menu Tùy Chỉnh
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      1.1
+// @version      1.2
 // @description  Chỉ thêm nút menu tuỳ chỉnh
 // @author       Dr. Trune
 // @match        https://hoathinh3d.mx/*

@@ -2,9 +2,9 @@
 // @name         HH3D - Menu Tùy Chỉnh
 // @namespace    https://github.com/drtrune/hoathinh3d.script
 // @version      3.1
-// @description  Chỉ thêm nút menu với chức năng A và B (thông báo tùy chỉnh) vào trang hoathinh3d.gg.
-// @author       Dr. Trune & Gemini
-// @match        https://hoathinh3d.gg/*
+// @description  Chỉ thêm nút menu tuỳ chỉnh
+// @author       Dr. Trune
+// @match        https://hoathinh3d.mx/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
@@ -19,8 +19,39 @@
     // ===============================================
 
     const TIMEOUT_ELEMENT_STABLE = 5000; // Thời gian tối đa chờ một phần tử xuất hiện ổn định
-    const INTERVAL_ELEMENT_STABLE = 500;  // Khoảng thời gian giữa các lần kiểm tra phần tử
-
+    const INTERVAL_ELEMENT_STABLE = 500; // Khoảng thời gian giữa các lần kiểm tra phần tử
+    const weburl = 'https://hoathinh3d.mx/'
+    const LINK_GROUPS = [
+        {
+            name: 'Tế lễ, vấn đáp, điểm danh',
+            links: [
+                { text: 'Tế Lễ', url: weburl + 'danh-sach-thanh-vien-tong-mon' },
+                { text: 'Vấn Đáp', url: weburl + 'van-dap-tong-mon' },
+                { text: 'Điểm Danh', url: weburl + 'diem-danh' }
+            ]
+        },
+        {
+            name: 'Hoang Vực, Thí Luyện, Phúc Lợi, Bí Cảnh',
+            links: [
+                { text: 'Hoang Vực', url: weburl + 'hoang-vuc' },
+                { text: 'Thí Luyện', url: weburl + 'thi-luyen-tong-mon' },
+                { text: 'Phúc Lợi', url: weburl + 'phuc-loi-duong' },
+                { text: 'Bí Cảnh', url: weburl + 'bi-canh-tong-mon' }
+            ]
+        },
+        {
+            name: 'Luận võ',
+            links: [
+                { text: 'Luận Võ', url: weburl + 'luan-vo-duong' },
+            ]
+        },
+        {
+            name: 'Khoáng Mạch',
+            links: [
+                { text: 'Khoáng Mạch', url: 'khoang-mach' }
+            ]
+        }
+    ];
     /**
      * Chờ một phần tử DOM ổn định (hiển thị và không bị vô hiệu hóa).
      * @param {string} selector - CSS selector của phần tử cần tìm.
@@ -72,27 +103,40 @@
         addStyle(`
             /* Style chung cho menu thả xuống */
             .custom-script-menu {
-                display: none; /* Mặc định ẩn */
+                display: flex !important; /* Đảm bảo menu sử dụng flexbox */
+                flex-wrap: nowrap !important; /* Không cho phép wrap, giữ menu trong một dòng */
+                flex-direction: column !important; /* Đặt menu theo chiều dọc */
                 position: absolute;
-                background-color: #f9f9f9;
+                background-color: #242323ff;
                 min-width: 120px;
-                box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
                 z-index: 1001; /* Đảm bảo menu hiển thị trên các phần tử khác */
                 border-radius: 5px;
                 top: calc(100% + 5px); /* Đặt menu bên dưới nút */
                 right: 0; /* Căn phải với nút cha */
                 padding: 5px 0;
+                gap: 6px; /* Khoảng cách giữa các mục menu */
             }
+            .custom-script-menu.hidden {
+                visibility: hidden;
+                opacity: 0;
+                pointer-events: none; /* ngăn click vào khi ẩn */
+                transition: opacity 0.2s ease;
+            }
+            /* Style cho các mục trong menu */
             .custom-script-menu a {
                 color: black;
                 /* Điều chỉnh padding và font-size tại đây để giảm kích thước */
-                padding: 20px 10px !important ; /* Giảm padding */
+                padding: 20px 10px!important ; /* Giảm padding */
                 font-size: 13px !important;   /* Thêm !important để ép buộc áp dụng font-size */
                 text-decoration: none;
+                border-radius: 5px;
                 display: block;
+                height: 40px; /* Giảm chiều cao của mỗi mục */
+                text-align: left;
+                align-items: center;
             }
             .custom-script-menu a:hover {
-                background-color: #ddd;
+                box-shadow: 0 0 15px rgba(52, 152, 219, 0.7);
             }
             /* Optional: Điều chỉnh khoảng cách nếu nút mới quá sát các nút khác */
             /* .nav-items > .custom-script-item-wrapper {
@@ -133,35 +177,29 @@
                     // 4. Tạo menu thả xuống
                     const dropdownMenu = document.createElement('div');
                     dropdownMenu.className = 'custom-script-menu';
-                    dropdownMenu.style.display = 'none'; // Ẩn ban đầu
+                    dropdownMenu.classList.toggle('hidden'); // Bắt đầu ở trạng thái ẩn
 
                     // 5. Thêm các mục vào menu thả xuống
-                    // Chức năng A
-                    const menuItemA = document.createElement('a');
-                    menuItemA.href = '#';
-                    menuItemA.textContent = 'Chức năng A';
-                    menuItemA.onclick = function(e) {
-                        e.preventDefault(); // Ngăn chặn hành vi mặc định của thẻ <a>
-                        const messageA = 'Đây là thông báo cho Chức năng A của script.';
-                        console.log(`%c[HH3D Script - Chức năng A] ${messageA}`, 'color: #1E90FF;');
-                        alert(messageA); // Hiển thị thông báo popup
-                        dropdownMenu.style.display = 'none'; // Đóng menu sau khi click
-                    };
+                    LINK_GROUPS.forEach(group => {
+                        const menuItem = document.createElement('a');
+                        menuItem.href = '#';
+                        // Lấy tên của mục menu trực tiếp từ dữ liệu
+                        menuItem.textContent = group.name;
 
-                    // Chức năng B
-                    const menuItemB = document.createElement('a');
-                    menuItemB.href = '#';
-                    menuItemB.textContent = 'Chức năng B';
-                    menuItemB.onclick = function(e) {
-                        e.preventDefault();
-                        const messageB = 'Đây là thông báo cho Chức năng B của script.';
-                        console.log(`%c[HH3D Script - Chức năng B] ${messageB}`, 'color: #DAA520;');
-                        alert(messageB);
-                        dropdownMenu.style.display = 'none';
-                    };
+                        // Tạo một hàm onclick duy nhất, sử dụng lại cho tất cả các mục
+                        menuItem.onclick = function(e) {
+                            e.preventDefault();
+                            console.log(`%c[HH3D Script] Đang mở nhóm: ${group.name}`, 'color: #8A2BE2;');
 
-                    dropdownMenu.appendChild(menuItemA);
-                    dropdownMenu.appendChild(menuItemB);
+                            // Vòng lặp qua các link trong group tương ứng
+                            for (const link of group.links) {
+                                window.open(link.url, '_blank');
+                            }
+                        };
+                        // Thêm mục vào menu
+                        dropdownMenu.appendChild(menuItem);
+                    });
+
 
                     // Gắn nút bấm và menu vào wrapper
                     customMenuWrapper.appendChild(newMenuButton);
@@ -175,13 +213,13 @@
                     // 6. Xử lý sự kiện click để bật/tắt menu
                     newMenuButton.addEventListener('click', function(e) {
                         e.preventDefault();
-                        dropdownMenu.style.display = dropdownMenu.style.display === 'none' ? 'block' : 'none';
+                        dropdownMenu.classList.toggle('hidden');
                     });
 
                     // 7. Đóng menu khi click ra ngoài
                     document.addEventListener('click', function(e) {
                         if (!customMenuWrapper.contains(e.target)) { // Kiểm tra xem click có nằm ngoài wrapper nút không
-                            dropdownMenu.style.display = 'none';
+                            dropdownMenu.classList.toggle('hidden');
                         }
                     });
 

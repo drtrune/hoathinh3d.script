@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         HH3D Khoang Mach
 // @namespace    https://github.com/drtrune/hoathinh3d.script/
-// @version      3.6
+// @version      3.7
 // @description  Tự động hóa quá trình khai thác khoáng mạch: chọn mỏ cụ thể, điều hướng, vào mỏ, nhận thưởng theo điều kiện, tự mua linh quang phù
 // @author       Dr. Trune
 // @match        https://hoathinh3d.mx/khoang-mach*
 // @grant        none
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {
@@ -987,8 +988,27 @@
         }
     });
 
-    // Start observing the body for changes
-    uiObserver.observe(document.body, { childList: true, subtree: true });
+    // Thử quan sát body hoặc documentElement, lặp lại nếu chưa sẵn sàng
+    function tryStartObserver() {
+      const targetNode = document.body || document.documentElement;
+
+      if (!(targetNode instanceof Node)) {
+        console.warn('[Auto Khoáng Mạch] Chưa tìm thấy Node hợp lệ để observe. Sẽ thử lại...');
+        return;
+      }
+
+      try {
+        uiObserver.observe(targetNode, { childList: true, subtree: true });
+        console.log('[Auto Khoáng Mạch] Observer đã được khởi động trên', targetNode === document.body ? 'body' : 'documentElement');
+        clearInterval(observerRetryTimer); // Dừng thử lại khi đã thành công
+      } catch (err) {
+        console.error('[Auto Khoáng Mạch] Lỗi khi gọi observe:', err.message);
+      }
+    }
+
+    // Thử lại mỗi 200ms cho đến khi thành công
+    let observerRetryTimer = setInterval(tryStartObserver, 200);
+
 
     // Also, try to initialize on DOMContentLoaded as a fallback for faster loading pages
     window.addEventListener('DOMContentLoaded', initializeScript);

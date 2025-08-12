@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D - Menu Tùy Chỉnh
 // @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      1.2
+// @version      1.4
 // @description  Chỉ thêm nút menu tuỳ chỉnh
 // @author       Dr. Trune
 // @match        https://hoathinh3d.mx/*
@@ -40,15 +40,16 @@
             ]
         },
         {
-            name: 'Luận võ',
+            name: 'Luận võ, Khoáng mạch',
             links: [
                 { text: 'Luận Võ', url: weburl + 'luan-vo-duong' },
+                { text: 'Khoáng Mạch', url: 'khoang-mach' }
             ]
         },
         {
-            name: 'Khoáng Mạch',
+            name: 'Bảng hoạt động ngày',
             links: [
-                { text: 'Khoáng Mạch', url: 'khoang-mach' }
+                 { text: 'Bảng hoạt động ngày', url: weburl + 'bang-hoat-dong-ngay' },
             ]
         }
     ];
@@ -97,6 +98,7 @@
     /**
      * Tạo và chèn nút menu tùy chỉnh bên cạnh nút thông báo.
      * Nút này sẽ mô phỏng cấu trúc và kiểu dáng của các nút điều hướng hiện có.
+     * Các nhóm nút sẽ được hiển thị theo hàng dọc, các nút trong cùng một nhóm sẽ theo hàng ngang.
      */
     function createCustomMenuButton() {
         // Thêm các style CSS cho menu thả xuống
@@ -104,17 +106,16 @@
             /* Style chung cho menu thả xuống */
             .custom-script-menu {
                 display: flex !important; /* Đảm bảo menu sử dụng flexbox */
-                flex-wrap: nowrap !important; /* Không cho phép wrap, giữ menu trong một dòng */
                 flex-direction: column !important; /* Đặt menu theo chiều dọc */
                 position: absolute;
                 background-color: #242323ff;
-                min-width: 250px;
+                min-width: 280px !important;
                 z-index: 1001; /* Đảm bảo menu hiển thị trên các phần tử khác */
                 border-radius: 5px;
                 top: calc(100% + 5px); /* Đặt menu bên dưới nút */
                 right: 0; /* Căn phải với nút cha */
-                padding: 5px 0;
-                gap: 6px; /* Khoảng cách giữa các mục menu */
+                padding: 10px;
+                gap: 6px; /* Khoảng cách giữa các nhóm menu */
             }
             .custom-script-menu.hidden {
                 visibility: hidden;
@@ -122,26 +123,33 @@
                 pointer-events: none; /* ngăn click vào khi ẩn */
                 transition: opacity 0.2s ease;
             }
-            /* Style cho các mục trong menu */
-            .custom-script-menu a {
+            /* Style cho một nhóm các nút */
+            .custom-script-menu-group {
+                display: flex;
+                flex-direction: row; /* Các nút trong nhóm xếp theo hàng ngang */
+                gap: 5px; /* Khoảng cách giữa các nút trong cùng một nhóm */
+                flex-wrap: wrap; /* Cho phép các nút xuống dòng nếu không đủ chỗ */
+                justify-content: flex-start; /* Căn lề trái */
+            }
+            /* Style cho các mục (nút) trong menu */
+            .custom-script-menu-group a {
                 color: black;
-                /* Điều chỉnh padding và font-size tại đây để giảm kích thước */
-                padding: 20px 10px!important ; /* Giảm padding */
-                font-size: 13px !important;   /* Thêm !important để ép buộc áp dụng font-size */
+                padding: 10px 10px !important;
+                font-size: 13px !important;
                 text-decoration: none;
                 border-radius: 5px;
-                display: block;
-                height: 40px; /* Giảm chiều cao của mỗi mục */
-                text-align: left;
-                align-items: center;
-            }
-            .custom-script-menu a:hover {
+                background-color: #f1f1f1;
+                flex-grow: 1;
+
+    /* Các thay đổi để căn giữa chữ bằng Flexbox */
+                display: flex; /* Bật Flexbox trên phần tử nút */
+                justify-content: center; /* Căn giữa theo chiều ngang */
+                align-items: center; /* Căn giữa theo chiều dọc */
+}
+
+            .custom-script-menu-group a:hover {
                 box-shadow: 0 0 15px rgba(52, 152, 219, 0.7);
             }
-            /* Optional: Điều chỉnh khoảng cách nếu nút mới quá sát các nút khác */
-            /* .nav-items > .custom-script-item-wrapper {
-                margin-left: 5px;
-            } */
         `);
 
         // Selector của phần tử chứa nút thông báo (div.load-notification relative)
@@ -179,27 +187,23 @@
                     dropdownMenu.className = 'custom-script-menu';
                     dropdownMenu.classList.toggle('hidden'); // Bắt đầu ở trạng thái ẩn
 
-                    // 5. Thêm các mục vào menu thả xuống
+                    // 5. Thêm các nhóm vào menu thả xuống
                     LINK_GROUPS.forEach(group => {
-                        const menuItem = document.createElement('a');
-                        menuItem.href = '#';
-                        // Lấy tên của mục menu trực tiếp từ dữ liệu
-                        menuItem.textContent = group.name;
+                        const groupDiv = document.createElement('div');
+                        groupDiv.className = 'custom-script-menu-group';
+                        
+                        // Thêm các nút vào nhóm
+                        group.links.forEach(link => {
+                            const menuItem = document.createElement('a');
+                            menuItem.href = link.url;
+                            menuItem.textContent = link.text;
+                            menuItem.target = '_blank'; // Mở trong tab mới
+                            groupDiv.appendChild(menuItem);
+                        });
 
-                        // Tạo một hàm onclick duy nhất, sử dụng lại cho tất cả các mục
-                        menuItem.onclick = function(e) {
-                            e.preventDefault();
-                            console.log(`%c[HH3D Script] Đang mở nhóm: ${group.name}`, 'color: #8A2BE2;');
-
-                            // Vòng lặp qua các link trong group tương ứng
-                            for (const link of group.links) {
-                                window.open(link.url, '_blank');
-                            }
-                        };
-                        // Thêm mục vào menu
-                        dropdownMenu.appendChild(menuItem);
+                        // Thêm nhóm vào menu
+                        dropdownMenu.appendChild(groupDiv);
                     });
-
 
                     // Gắn nút bấm và menu vào wrapper
                     customMenuWrapper.appendChild(newMenuButton);
@@ -215,9 +219,9 @@
                         e.preventDefault();
                         dropdownMenu.classList.toggle('hidden');
                         if (dropdownMenu.classList.contains('hidden')) {
-                            iconSpan.textContent = 'task'; // Đổi icon thành "cancel" khi mở menu
+                            iconSpan.textContent = 'task'; // Đổi icon thành "task" khi menu đóng
                         } else {
-                            iconSpan.textContent = 'highlight_off'; // Đổi icon về "task" khi đóng menu
+                            iconSpan.textContent = 'highlight_off'; // Đổi icon về "highlight_off" khi mở menu
                         };
                     });
 

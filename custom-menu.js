@@ -1,138 +1,392 @@
 // ==UserScript==
-// @name         HH3D - Menu Tùy Chỉnh
-// @namespace    https://github.com/drtrune/hoathinh3d.script
-// @version      1.4
-// @description  Chỉ thêm nút menu tuỳ chỉnh
-// @author       Dr. Trune
-// @match        https://hoathinh3d.mx/*
-// @run-at       document-start
-// @grant        none
+// @name          HH3D - Menu Tùy Chỉnh và Điểm Danh Tự Động
+// @namespace     https://github.com/drtrune/hoathinh3d.script
+// @version       1.5
+// @description   Thêm menu tùy chỉnh với các liên kết hữu ích và nút Điểm Danh - Tế lễ - Vấn Đáp tự động
+// @author        Dr. Trune
+// @match         https://hoathinh3d.mx/*
+// @run-at        document-idle
+// @grant         GM_xmlhttpRequest
 // ==/UserScript==
 
 (function() {
-    'use strict';
+    'use strict';
 
-    console.log('%c[HH3D Script] Tải thành công. Đang khởi tạo UI tùy chỉnh.', 'background: #222; color: #bada55; padding: 2px 5px; border-radius: 3px;');
+    console.log('%c[HH3D Script] Tải thành công. Đang khởi tạo UI tùy chỉnh.', 'background: #222; color: #bada55; padding: 2px 5px; border-radius: 3px;');
 
-    // ===============================================
-    // HÀM TIỆN ÍCH CHUNG
-    // ===============================================
+    // ===============================================
+    // HÀM TIỆN ÍCH CHUNG
+    // ===============================================
+    const weburl = 'https://hoathinh3d.mx/';
+    let questionDataCache = null;
+    const QUESTION_DATA_URL = 'https://raw.githubusercontent.com/drtrune/hoathinh3d.script/main/vandap.json';
 
-    const TIMEOUT_ELEMENT_STABLE = 5000; // Thời gian tối đa chờ một phần tử xuất hiện ổn định
-    const INTERVAL_ELEMENT_STABLE = 500; // Khoảng thời gian giữa các lần kiểm tra phần tử
-    const weburl = 'https://hoathinh3d.mx/'
-    const LINK_GROUPS = [
-        {
-            name: 'Tế lễ, vấn đáp, điểm danh',
-            links: [
-                { text: 'Tế Lễ', url: weburl + 'danh-sach-thanh-vien-tong-mon' },
-                { text: 'Vấn Đáp', url: weburl + 'van-dap-tong-mon' },
-                { text: 'Điểm Danh', url: weburl + 'diem-danh' }
-            ]
-        },
-        {
-            name: 'Hoang Vực, Thí Luyện, Phúc Lợi, Bí Cảnh',
-            links: [
-                { text: 'Hoang Vực', url: weburl + 'hoang-vuc' },
-                { text: 'Thí Luyện', url: weburl + 'thi-luyen-tong-mon-hh3d' },
-                { text: 'Phúc Lợi', url: weburl + 'phuc-loi-duong' },
-                { text: 'Bí Cảnh', url: weburl + 'bi-canh-tong-mon' }
-            ]
-        },
-        {
-            name: 'Luận võ, Khoáng mạch',
-            links: [
-                { text: 'Luận Võ', url: weburl + 'luan-vo-duong' },
-                { text: 'Khoáng Mạch', url: 'khoang-mach' }
-            ]
-        },
-        {
-            name: 'Bảng hoạt động ngày',
-            links: [
-                 { text: 'Bảng hoạt động ngày', url: weburl + 'bang-hoat-dong-ngay' },
-            ]
-        }
-    ];
-    /**
-     * Chờ một phần tử DOM ổn định (hiển thị và không bị vô hiệu hóa).
-     * @param {string} selector - CSS selector của phần tử cần tìm.
-     * @param {function} callback - Hàm sẽ được gọi khi phần tử được tìm thấy hoặc hết thời gian chờ.
-     * @param {number} timeout - Thời gian chờ tối đa (ms).
-     * @param {number} interval - Khoảng thời gian giữa các lần kiểm tra (ms).
-     */
-    function waitForElementStable(selector, callback, timeout = TIMEOUT_ELEMENT_STABLE, interval = INTERVAL_ELEMENT_STABLE) {
-        let startTime = Date.now();
-        let intervalId;
+    // Cấu trúc menu đã được cập nhật để chỉ có một nút Điểm danh - Tế lễ - Vấn đáp
+    const LINK_GROUPS = [
+        {
+            name: 'Điểm danh, Tế lễ, Vấn đáp',
+            links: [
+                { text: 'Điểm danh - Tế lễ - Vấn đáp', isFullAutomation: true }
+            ]
+        },
+        {
+            name: 'Hoang Vực, Thí Luyện, Phúc Lợi, Bí Cảnh',
+            links: [
+                { text: 'Hoang Vực', url: weburl + 'hoang-vuc' },
+                { text: 'Thí Luyện', url: weburl + 'thi-luyen-tong-mon-hh3d' },
+                { text: 'Phúc Lợi', url: weburl + 'phuc-loi-duong' },
+                { text: 'Bí Cảnh', url: weburl + 'bi-canh-tong-mon' }
+            ]
+        },
+        {
+            name: 'Luận võ, Khoáng mạch',
+            links: [
+                { text: 'Luận Võ', url: weburl + 'luan-vo-duong' },
+                { text: 'Khoáng Mạch', url: 'khoang-mach' }
+            ]
+        },
+        {
+            name: 'Bảng hoạt động ngày',
+            links: [
+                { text: 'Bảng hoạt động ngày', url: weburl + 'bang-hoat-dong-ngay' },
+            ]
+        }
+    ];
 
-        intervalId = setInterval(() => {
-            const foundElement = document.querySelector(selector);
-            const elapsedTime = Date.now() - startTime;
+    function addStyle(css) {
+        const style = document.createElement('style');
+        style.type = 'text/css';
+        style.appendChild(document.createTextNode(css));
+        document.head.appendChild(style);
+    }
 
-            // Kiểm tra nếu phần tử tồn tại, hiển thị và không bị vô hiệu hóa
-            if (foundElement && foundElement.offsetParent !== null && !foundElement.disabled) {
-                clearInterval(intervalId);
-                callback(foundElement);
-            } else if (elapsedTime >= timeout) {
-                // Hết thời gian chờ, không tìm thấy phần tử
-                clearInterval(intervalId);
-                callback(null);
-            }
-        }, interval);
-    }
+    // ===============================================
+    // HÀM VẤN ĐÁP & ĐIỂM DANH
+    // ===============================================
 
-    /**
-     * Thêm CSS tùy chỉnh vào trang.
-     * @param {string} css - Chuỗi CSS cần thêm.
-     */
-    function addStyle(css) {
-        const style = document.createElement('style');
-        style.type = 'text/css';
-        style.appendChild(document.createTextNode(css));
-        document.head.appendChild(style);
-    }
+    function getNonce() {
+        if (typeof Better_Messages !== 'undefined' && Better_Messages.nonce) {
+            return Better_Messages.nonce;
+        }
+        return null;
+    }
 
-    // ===============================================
-    // HÀM TẠO UI NÚT MENU TÙY CHỈNH
-    // ===============================================
+    // Hàm tải đáp án từ GitHub
+    function loadAnswersFromGitHub() {
+        return new Promise((resolve, reject) => {
+            if (questionDataCache) {
+                resolve();
+                return;
+            }
+            console.log('[Vấn Đáp] ▶️ Đang tải đáp án...');
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: QUESTION_DATA_URL,
+                onload: function(response) {
+                    try {
+                        questionDataCache = JSON.parse(response.responseText);
+                        console.log("[Vấn Đáp] ✅ Đã tải đáp án.");
+                        resolve();
+                    } catch (e) {
+                        console.error("[Vấn Đáp] ❌ Lỗi parse JSON:", e);
+                        showNotification('Lỗi khi tải đáp án. Vui lòng thử lại.', 'error');
+                        reject(e);
+                    }
+                },
+                onerror: function(err) {
+                    console.error("[Vấn Đáp] ❌ Lỗi tải dữ liệu:", err);
+                    showNotification('Lỗi khi tải đáp án từ GitHub.', 'error');
+                    reject(err);
+                }
+            });
+        });
+    }
 
-    /**
-     * Tạo và chèn nút menu tùy chỉnh bên cạnh nút thông báo.
-     * Nút này sẽ mô phỏng cấu trúc và kiểu dáng của các nút điều hướng hiện có.
-     * Các nhóm nút sẽ được hiển thị theo hàng dọc, các nút trong cùng một nhóm sẽ theo hàng ngang.
-     */
-    function createCustomMenuButton() {
-        // Thêm các style CSS cho menu thả xuống
+    async function checkAnswerAndSubmit(question, nonce, headers, url) {
+        const normalizedIncomingQuestion = question.question.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '');
+
+        let foundAnswer = null;
+
+        for (const storedQuestionKey in questionDataCache.questions) {
+            const normalizedStoredQuestionKey = storedQuestionKey.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '');
+
+            if (normalizedStoredQuestionKey === normalizedIncomingQuestion) {
+                foundAnswer = questionDataCache.questions[storedQuestionKey];
+                break;
+            }
+        }
+
+        if (!foundAnswer) {
+            showNotification(`Vấn Đáp: Không tìm thấy đáp án cho câu hỏi này.`, 'warn');
+            return false;
+        }
+
+        const answerIndex = question.options.findIndex(option =>
+            option.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '') ===
+            foundAnswer.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '')
+        );
+
+        if (answerIndex === -1) {
+            console.error(`[HH3D Vấn Đáp] ❌ Lỗi: Đáp án "${foundAnswer}" không có trong các lựa chọn của server.`);
+            showNotification(`Vấn Đáp: Đáp án đúng không có trong các lựa chọn.`, 'error');
+            return false;
+        }
+
+        const payloadSubmitAnswer = new URLSearchParams();
+        payloadSubmitAnswer.append('action', 'save_quiz_result');
+        payloadSubmitAnswer.append('question_id', question.id);
+        payloadSubmitAnswer.append('answer', answerIndex);
+
+        const responseSubmit = await fetch(url, {
+            method: 'POST',
+            headers: headers,
+            body: payloadSubmitAnswer,
+            credentials: 'include'
+        });
+
+        const dataSubmit = await responseSubmit.json();
+        if (dataSubmit.success) {
+            return true;
+        } else {
+            console.error(`[HH3D Vấn Đáp] ❌ Lỗi khi gửi đáp án:`, dataSubmit.message);
+            showNotification(`Vấn Đáp: Lỗi khi gửi đáp án.`, 'error');
+            return false;
+        }
+    }
+
+    async function doVanDap(nonce) {
+        try {
+            await loadAnswersFromGitHub();
+
+            console.log('[HH3D Vấn Đáp] ▶️ Bắt đầu Vấn Đáp');
+            const url = weburl + 'wp-content/themes/halimmovies-child/hh3d-ajax.php';
+            const headers = {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-Wp-Nonce': nonce,
+            };
+
+            let correctCount = 0;
+            let answeredThisSession = 0;
+            const maxAttempts = 10;
+            let currentAttempt = 0;
+            let totalQuestions = 0;
+
+            while (correctCount < 5 && currentAttempt < maxAttempts) {
+                currentAttempt++;
+                const payloadLoadQuiz = new URLSearchParams();
+                payloadLoadQuiz.append('action', 'load_quiz_data');
+
+                const responseQuiz = await fetch(url, {
+                    method: 'POST',
+                    headers: headers,
+                    body: payloadLoadQuiz,
+                    credentials: 'include'
+                });
+
+                const dataQuiz = await responseQuiz.json();
+
+                if (!dataQuiz.success || !dataQuiz.data || !dataQuiz.data.questions) {
+                    showNotification(`Vấn Đáp Tông Môn: ${dataQuiz.data.message || 'Lỗi khi lấy câu hỏi'}`, 'warn');
+                    return;
+                }
+
+                if (dataQuiz.data.completed) {
+                    showNotification('Đã hoàn thành vấn đáp hôm nay.', 'success');
+                    return;
+                }
+
+                const questions = dataQuiz.data.questions;
+                totalQuestions = questions.length;
+                correctCount = dataQuiz.data.correct_answers || 0;
+                const questionsToAnswer = questions.slice(correctCount);
+
+                if (questionsToAnswer.length === 0) {
+                     showNotification(`Vấn Đáp Tông Môn: Đã hoàn thành với ${correctCount}/${totalQuestions} câu.`, 'success');
+                     return;
+                }
+
+                let newAnswersFound = false;
+                for (const question of questionsToAnswer) {
+                    const isAnsweredSuccessfully = await checkAnswerAndSubmit(question, nonce, headers, url);
+                    if (isAnsweredSuccessfully) {
+                        answeredThisSession++;
+                        newAnswersFound = true;
+                    }
+                }
+
+                if (!newAnswersFound) {
+                    break;
+                }
+
+                if (correctCount < 5) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+
+            showNotification(`Hoàn thành Vấn Đáp. Đã trả lời thêm ${answeredThisSession} câu. Tổng số câu đúng: ${correctCount}/${totalQuestions}`, 'success');
+
+        } catch (e) {
+            console.error(`[HH3D Vấn Đáp] ❌ Lỗi xảy ra:`, e);
+            showNotification(`Lỗi khi thực hiện Vấn Đáp: ${e.message}`, 'error');
+        }
+    }
+
+    async function doDailyCheckin(nonce) {
+        try {
+            console.log('[HH3D Daily Check-in] ▶️ Bắt đầu Daily Check-in');
+            const url = weburl + 'wp-json/hh3d/v1/action';
+            const payload = new URLSearchParams();
+            payload.append('action', 'daily_check_in');
+
+            const headers = {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Wp-Nonce': nonce
+            };
+
+            const response = await fetch(url, { method: 'POST', headers: headers, body: payload });
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showNotification(`Điểm danh ngày: ${data.message} (${data.streak} ngày)`, 'success');
+            } else {
+                showNotification(`Điểm danh ngày: ${data.message || 'Lỗi không xác định'}`, 'warn');
+            }
+        } catch (e) {
+            console.error(`[HH3D Daily Check-in] ❌ Lỗi xảy ra:`, e);
+            showNotification(`Lỗi khi thực hiện Daily Check-in: ${e.message}`, 'error');
+        }
+    }
+
+    async function doClanDailyCheckin(nonce) {
+        try {
+            console.log('[HH3D Clan Check-in] ▶️ Bắt đầu Clan Check-in');
+            const url = "https://hoathinh3d.mx/wp-json/tong-mon/v1/te-le-tong-mon";
+
+            const headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:141.0) Gecko/20100101 Firefox/141.0",
+                "Accept": "*/*",
+                "Accept-Language": "vi,en-US;q=0.5",
+                "Content-Type": "application/json",
+                "X-WP-Nonce": nonce,
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+                "Priority": "u=0"
+            };
+
+            const response = await fetch(url, {
+                "credentials": "include",
+                "headers": headers,
+                "referrer": "https://hoathinh3d.mx/danh-sach-thanh-vien-tong-mon",
+                "body": "{}",
+                "method": "POST",
+                "mode": "cors"
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showNotification(`Điểm danh Tông Môn: ${data.message} (${data.cong_hien_points})`, 'success');
+            } else {
+                showNotification(`Điểm danh Tông Môn: ${data.message || 'Lỗi không xác định'}`, 'warn');
+            }
+        } catch (e) {
+            console.error(`[HH3D Clan Check-in] ❌ Lỗi xảy ra:`, e);
+            showNotification(`Lỗi khi thực hiện Clan Check-in: ${e.message}`, 'error');
+        }
+    }
+
+    // ===============================================
+    // HÀM HIỂN THỊ THÔNG BÁO
+    // ===============================================
+
+    function showNotification(message, type = 'success') {
+    if (type === 'success') {
+        console.log(`[HH3D Notification] ✅ SUCCESS: ${message}`);
+    } else if (type === 'warn') {
+        console.warn(`[HH3D Notification] ⚠️ WARN: ${message}`);
+    } else {
+        console.error(`[HH3D Notification] ❌ ERROR: ${message}`);
+    }
+
+    const activeNotifications = document.querySelectorAll('.hh3d-notification-item');
+    const notificationHeight = 40;
+    const notificationGap = 10;
+    const itemHeightWithGap = notificationHeight + notificationGap;
+
+    Array.from(activeNotifications)
+        .reverse()
+        .forEach((notification, index) => {
+            const newTop = 20 + itemHeightWithGap * (index + 1);
+            notification.style.top = `${newTop}px`;
+        });
+
+    const notification = document.createElement('div');
+    notification.classList.add('hh3d-notification-item');
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.right = '20px';
+    notification.style.padding = '10px 20px';
+    notification.style.borderRadius = '5px';
+    notification.style.color = 'white';
+    notification.style.zIndex = '10000';
+    notification.style.transition = 'opacity 0.5s ease-in-out, top 0.5s ease-in-out';
+    notification.style.opacity = '0';
+
+    if (type === 'success') {
+        notification.style.backgroundColor = '#4CAF50';
+    } else if (type === 'warn') {
+        notification.style.backgroundColor = '#ff9800';
+    } else {
+        notification.style.backgroundColor = '#f44336';
+    }
+
+    notification.innerText = message;
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        notification.style.opacity = '1';
+    }, 10);
+
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 500);
+    }, 3000);
+}
+
+    // ===============================================
+    // HÀM TẠO UI NÚT MENU TÙY CHỈNH
+    // ===============================================
+
+    function createCustomMenuButton() {
         addStyle(`
-            /* Style chung cho menu thả xuống */
             .custom-script-menu {
-                display: flex !important; /* Đảm bảo menu sử dụng flexbox */
-                flex-direction: column !important; /* Đặt menu theo chiều dọc */
+                display: flex !important;
+                flex-direction: column !important;
                 position: absolute;
                 background-color: #242323ff;
                 min-width: 280px !important;
-                z-index: 1001; /* Đảm bảo menu hiển thị trên các phần tử khác */
+                z-index: 1001;
                 border-radius: 5px;
-                top: calc(100% + 5px); /* Đặt menu bên dưới nút */
-                right: 0; /* Căn phải với nút cha */
+                top: calc(100% + 5px);
+                right: 0;
                 padding: 10px;
-                gap: 6px; /* Khoảng cách giữa các nhóm menu */
+                gap: 6px;
             }
             .custom-script-menu.hidden {
                 visibility: hidden;
                 opacity: 0;
-                pointer-events: none; /* ngăn click vào khi ẩn */
+                pointer-events: none;
                 transition: opacity 0.2s ease;
             }
-            /* Style cho một nhóm các nút */
             .custom-script-menu-group {
                 display: flex;
-                flex-direction: row; /* Các nút trong nhóm xếp theo hàng ngang */
-                gap: 5px; /* Khoảng cách giữa các nút trong cùng một nhóm */
-                flex-wrap: wrap; /* Cho phép các nút xuống dòng nếu không đủ chỗ */
-                justify-content: flex-start; /* Căn lề trái */
+                flex-direction: row;
+                gap: 5px;
+                flex-wrap: wrap;
+                justify-content: flex-start;
             }
-            /* Style cho các mục (nút) trong menu */
-            .custom-script-menu-group a {
+            .custom-script-menu-group a, .custom-script-menu-group button {
                 color: black;
                 padding: 10px 10px !important;
                 font-size: 13px !important;
@@ -140,128 +394,127 @@
                 border-radius: 5px;
                 background-color: #f1f1f1;
                 flex-grow: 1;
-
-    /* Các thay đổi để căn giữa chữ bằng Flexbox */
-                display: flex; /* Bật Flexbox trên phần tử nút */
-                justify-content: center; /* Căn giữa theo chiều ngang */
-                align-items: center; /* Căn giữa theo chiều dọc */
-}
-
-            .custom-script-menu-group a:hover {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                border: none;
+                cursor: pointer;
+            }
+            .custom-script-menu-group a:hover, .custom-script-menu-group button:hover {
                 box-shadow: 0 0 15px rgba(52, 152, 219, 0.7);
             }
         `);
 
-        // Selector của phần tử chứa nút thông báo (div.load-notification relative)
-        const notificationsDivSelector = '.load-notification.relative';
+        const notificationsDivSelector = '.load-notification.relative';
 
-        // Chờ phần tử này xuất hiện và ổn định
-        waitForElementStable(notificationsDivSelector, (notificationsDiv) => {
-            if (notificationsDiv) {
-                // Lấy phần tử cha của nút thông báo, đây là nơi chúng ta sẽ chèn nút mới
-                const parentNavItems = notificationsDiv.parentNode;
+        const observer = new MutationObserver((mutationsList, observer) => {
+            const notificationsDiv = document.querySelector(notificationsDivSelector);
+            if (notificationsDiv) {
+                console.log('[HH3D Script] ✅ Đã tìm thấy nút thông báo. Đang chèn menu.');
+                observer.disconnect();
 
-                // Đảm bảo phần tử cha là thanh điều hướng chính
-                if (parentNavItems && parentNavItems.classList.contains('nav-items')) {
-                    // 1. Tạo wrapper cho nút menu tùy chỉnh, mô phỏng cấu trúc của nút thông báo
-                    const customMenuWrapper = document.createElement('div');
-                    // Áp dụng các class tương tự để kế thừa style và flexbox layout
-                    customMenuWrapper.classList.add('load-notification', 'relative', 'custom-script-item-wrapper');
+                const parentNavItems = notificationsDiv.parentNode;
 
-                    // 2. Tạo thẻ <a> cho nút chính (giống như các nút nav khác)
-                    const newMenuButton = document.createElement('a');
-                    newMenuButton.href = '#';
-                    newMenuButton.setAttribute('data-view', 'hide'); // Mô phỏng thuộc tính của các nút khác
+                if (parentNavItems && parentNavItems.classList.contains('nav-items')) {
+                    const customMenuWrapper = document.createElement('div');
+                    customMenuWrapper.classList.add('load-notification', 'relative', 'custom-script-item-wrapper');
 
-                    // 3. Tạo div chứa icon (bên trong thẻ <a>)
-                    const iconDiv = document.createElement('div');
-                    const iconSpan = document.createElement('span');
-                    iconSpan.classList.add('material-icons-round1', 'material-icons-menu');
-                    iconSpan.textContent = 'task'; // Icon Material Icons cho menu script
+                    const newMenuButton = document.createElement('a');
+                    newMenuButton.href = '#';
+                    newMenuButton.setAttribute('data-view', 'hide');
 
-                    iconDiv.appendChild(iconSpan);
-                    newMenuButton.appendChild(iconDiv);
+                    const iconDiv = document.createElement('div');
+                    const iconSpan = document.createElement('span');
+                    iconSpan.classList.add('material-icons-round1', 'material-icons-menu');
+                    iconSpan.textContent = 'task';
+                    iconDiv.appendChild(iconSpan);
+                    newMenuButton.appendChild(iconDiv);
 
-                    // 4. Tạo menu thả xuống
-                    const dropdownMenu = document.createElement('div');
-                    dropdownMenu.className = 'custom-script-menu';
-                    dropdownMenu.classList.toggle('hidden'); // Bắt đầu ở trạng thái ẩn
+                    const dropdownMenu = document.createElement('div');
+                    dropdownMenu.className = 'custom-script-menu hidden';
 
-                    // 5. Thêm các nhóm vào menu thả xuống
-                    LINK_GROUPS.forEach(group => {
-                        const groupDiv = document.createElement('div');
-                        groupDiv.className = 'custom-script-menu-group';
-                        
-                        // Thêm các nút vào nhóm
-                        group.links.forEach(link => {
-                            const menuItem = document.createElement('a');
-                            menuItem.href = link.url;
-                            menuItem.textContent = link.text;
-                            menuItem.target = '_blank'; // Mở trong tab mới
-                            groupDiv.appendChild(menuItem);
-                        });
+                    LINK_GROUPS.forEach(group => {
+                        const groupDiv = document.createElement('div');
+                        groupDiv.className = 'custom-script-menu-group';
 
-                        // Thêm nhóm vào menu
-                        dropdownMenu.appendChild(groupDiv);
-                    });
+                        group.links.forEach(link => {
+                            // Tạo một nút duy nhất cho tất cả các tác vụ tự động
+                            if (link.isFullAutomation) {
+                                const autoTaskButton = document.createElement('button');
+                                autoTaskButton.textContent = link.text;
+                                autoTaskButton.id = 'auto-task-btn';
 
-                    // Gắn nút bấm và menu vào wrapper
-                    customMenuWrapper.appendChild(newMenuButton);
-                    customMenuWrapper.appendChild(dropdownMenu);
+                                autoTaskButton.addEventListener('click', async () => {
+                                    console.log('[HH3D Script] 🖱️ Nút Điểm Danh - Tế lễ - Vấn đáp đã được nhấn.');
+                                    autoTaskButton.disabled = true;
+                                    autoTaskButton.textContent = 'Đang xử lý...';
+                                    showNotification('Đang thực hiện các nhiệm vụ tự động.', 'warn');
 
-                    // Chèn wrapper nút menu mới vào DOM, ngay sau div.load-notification relative
-                    parentNavItems.insertBefore(customMenuWrapper, notificationsDiv.nextSibling);
+                                    const nonce = getNonce();
+                                    if (!nonce) {
+                                        const msg = 'Không tìm thấy nonce! Vui lòng tải lại trang.';
+                                        showNotification(msg, 'error');
+                                        console.error(`[HH3D Script] ❌ ERROR: ${msg}`);
+                                        autoTaskButton.disabled = false;
+                                        autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
+                                        return;
+                                    }
 
-                    console.log('%c[HH3D Script] Đã chèn nút menu tùy chỉnh thành công.', 'color: lightgreen;');
+                                    // Gọi tuần tự các hàm
+                                    await doDailyCheckin(nonce);
+                                    await doClanDailyCheckin(nonce);
+                                    await doVanDap(nonce);
 
-                    // 6. Xử lý sự kiện click để bật/tắt menu
-                    newMenuButton.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        dropdownMenu.classList.toggle('hidden');
-                        if (dropdownMenu.classList.contains('hidden')) {
-                            iconSpan.textContent = 'task'; // Đổi icon thành "task" khi menu đóng
-                        } else {
-                            iconSpan.textContent = 'highlight_off'; // Đổi icon về "highlight_off" khi mở menu
-                        };
-                    });
+                                    autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
+                                    autoTaskButton.disabled = false;
+                                    console.log('[HH3D Script] ✅ Tất cả nhiệm vụ đã hoàn thành.');
+                                });
+                                groupDiv.appendChild(autoTaskButton);
+                            } else {
+                                const menuItem = document.createElement('a');
+                                menuItem.href = link.url;
+                                menuItem.textContent = link.text;
+                                menuItem.target = '_blank';
+                                groupDiv.appendChild(menuItem);
+                            }
+                        });
 
-                    // 7. Đóng menu khi click ra ngoài
-                    document.addEventListener('click', function(e) {
-                        if (!customMenuWrapper.contains(e.target)) { // Kiểm tra xem click có nằm ngoài wrapper nút không
-                            dropdownMenu.classList.add('hidden');
-                        }
-                    });
+                        dropdownMenu.appendChild(groupDiv);
+                    });
 
-                } else {
-                    console.warn('%c[HH3D Script - Cảnh báo] Không tìm thấy phần tử cha ".nav-items" của nút thông báo. Không thể chèn menu.', 'color: orange;');
-                }
-            } else {
-                console.warn('%c[HH3D Script - Cảnh báo] Không tìm thấy div ".load-notification.relative" để chèn menu cạnh. Menu sẽ không được hiển thị.', 'color: orange;');
-            }
-        }, 10000); // Tăng thời gian chờ nếu trang load chậm
-    }
+                    customMenuWrapper.appendChild(newMenuButton);
+                    customMenuWrapper.appendChild(dropdownMenu);
+                    parentNavItems.insertBefore(customMenuWrapper, notificationsDiv.nextSibling);
 
-    // ===============================================
-    // KHỞI TẠO SCRIPT
-    // ===============================================
+                    console.log('[HH3D Script] Đã chèn nút menu tùy chỉnh thành công.');
 
-    console.log('%c[HH3D Script] Đang chờ DOMContentLoaded để khởi tạo UI.', 'color: #8A2BE2;');
+                    newMenuButton.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        dropdownMenu.classList.toggle('hidden');
+                        if (dropdownMenu.classList.contains('hidden')) {
+                            iconSpan.textContent = 'task';
+                        } else {
+                            iconSpan.textContent = 'highlight_off';
+                        }
+                    });
 
-    // Lắng nghe sự kiện DOMContentLoaded để đảm bảo DOM đã sẵn sàng
-    window.addEventListener('DOMContentLoaded', () => {
-        createCustomMenuButton(); // Gọi hàm tạo nút menu tùy chỉnh
-    });
+                    document.addEventListener('click', function(e) {
+                        if (!customMenuWrapper.contains(e.target)) {
+                            dropdownMenu.classList.add('hidden');
+                        }
+                    });
+                } else {
+                    console.warn('[HH3D Script - Cảnh báo] Không tìm thấy phần tử cha ".nav-items". Không thể chèn menu.');
+                }
+            }
+        });
 
-    // Fallback cho trường hợp DOMContentLoaded đã bắn trước khi script kịp gán listener
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        createCustomMenuButton();
-    }
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        console.log('[HH3D Script] Đang theo dõi DOM để chèn nút.');
+    }
 
-    // MutationObserver (giúp theo dõi thay đổi DOM, có thể giữ lại nếu bạn cần debug)
-    const observer = new MutationObserver((mutationsList, observer) => {
-        // console.log('[HH3D Script - Debug] DOM Mutation detected.', mutationsList);
-    });
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-    console.log('%c[HH3D Script] Thiết lập ban đầu hoàn tất.', 'color: #8A2BE2;');
-
+    // ===============================================
+    // KHỞI TẠO SCRIPT
+    // ===============================================
+    createCustomMenuButton();
 })();

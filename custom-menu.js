@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh và Điểm Danh Tự Động
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.3
+// @version       1.6
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và nút Điểm Danh - Tế lễ - Vấn Đáp tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*

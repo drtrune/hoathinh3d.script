@@ -74,35 +74,33 @@
     }
 
     // Hàm tải đáp án từ GitHub
-    function loadAnswersFromGitHub() {
-        return new Promise((resolve, reject) => {
-            if (questionDataCache) {
-                resolve();
-                return;
-            }
-            console.log('[Vấn Đáp] ▶️ Đang tải đáp án...');
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: QUESTION_DATA_URL,
-                onload: function(response) {
-                    try {
-                        questionDataCache = JSON.parse(response.responseText);
-                        console.log("[Vấn Đáp] ✅ Đã tải đáp án.");
-                        resolve();
-                    } catch (e) {
-                        console.error("[Vấn Đáp] ❌ Lỗi parse JSON:", e);
-                        showNotification('Lỗi khi tải đáp án. Vui lòng thử lại.', 'error');
-                        reject(e);
-                    }
-                },
-                onerror: function(err) {
-                    console.error("[Vấn Đáp] ❌ Lỗi tải dữ liệu:", err);
-                    showNotification('Lỗi khi tải đáp án từ GitHub.', 'error');
-                    reject(err);
-                }
-            });
-        });
-    }
+    function loadAnswersFromGitHub() {
+        return new Promise((resolve, reject) => {
+            if (questionDataCache) {
+                resolve();
+                return;
+            }
+            console.log('[Vấn Đáp] ▶️ Đang tải đáp án...');
+
+            fetch(QUESTION_DATA_URL)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    questionDataCache = data;
+                    console.log("[Vấn Đáp] ✅ Đã tải đáp án.");
+                    resolve();
+                })
+                .catch(e => {
+                    console.error("[Vấn Đáp] ❌ Lỗi tải hoặc parse JSON:", e);
+                    showNotification('Lỗi khi tải đáp án. Vui lòng thử lại.', 'error');
+                    reject(e);
+                });
+        });
+    }
 
     //Hàm kiểm tra câu hỏi và trả lời
     async function checkAnswerAndSubmit(question, nonce, headers, url) {

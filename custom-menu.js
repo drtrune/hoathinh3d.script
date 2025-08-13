@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh và Điểm Danh Tự Động
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       1.5
+// @version       2.3
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và nút Điểm Danh - Tế lễ - Vấn Đáp tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
 // @run-at        document-idle
 // @grant         GM_xmlhttpRequest
+// @connect      raw.githubusercontent.com
 // ==/UserScript==
 
 (function() {
@@ -20,7 +21,7 @@
     const weburl = 'https://hoathinh3d.mx/';
     let questionDataCache = null;
     const QUESTION_DATA_URL = 'https://raw.githubusercontent.com/drtrune/hoathinh3d.script/main/vandap.json';
-
+    let isCssInjected = false;
     // Cấu trúc menu đã được cập nhật để chỉ có một nút Điểm danh - Tế lễ - Vấn đáp
     const LINK_GROUPS = [
         {
@@ -64,6 +65,7 @@
     // HÀM VẤN ĐÁP & ĐIỂM DANH
     // ===============================================
 
+    //Lấy Nonce
     function getNonce() {
         if (typeof Better_Messages !== 'undefined' && Better_Messages.nonce) {
             return Better_Messages.nonce;
@@ -102,6 +104,7 @@
         });
     }
 
+    //Hàm kiểm tra câu hỏi và trả lời
     async function checkAnswerAndSubmit(question, nonce, headers, url) {
         const normalizedIncomingQuestion = question.question.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '');
 
@@ -117,7 +120,7 @@
         }
 
         if (!foundAnswer) {
-            showNotification(`Vấn Đáp: Không tìm thấy đáp án cho câu hỏi này.`, 'warn');
+            showNotification(`Vấn Đáp: Không tìm thấy đáp án cho câu hỏi: "${question}"` , 'error');
             return false;
         }
 
@@ -128,7 +131,7 @@
 
         if (answerIndex === -1) {
             console.error(`[HH3D Vấn Đáp] ❌ Lỗi: Đáp án "${foundAnswer}" không có trong các lựa chọn của server.`);
-            showNotification(`Vấn Đáp: Đáp án đúng không có trong các lựa chọn.`, 'error');
+            showNotification(`Vấn Đáp: Câu hỏi: "${question}" không có đáp án đúng trong server.`, 'error');
             return false;
         }
 
@@ -154,6 +157,7 @@
         }
     }
 
+    //Hàm vấn đáp
     async function doVanDap(nonce) {
         try {
             await loadAnswersFromGitHub();
@@ -187,7 +191,7 @@
                 const dataQuiz = await responseQuiz.json();
 
                 if (!dataQuiz.success || !dataQuiz.data || !dataQuiz.data.questions) {
-                    showNotification(`Vấn Đáp Tông Môn: ${dataQuiz.data.message || 'Lỗi khi lấy câu hỏi'}`, 'warn');
+                    showNotification(`Vấn Đáp: ${dataQuiz.data.message || 'Lỗi khi lấy câu hỏi'}`, 'warn');
                     return;
                 }
 
@@ -202,7 +206,7 @@
                 const questionsToAnswer = questions.slice(correctCount);
 
                 if (questionsToAnswer.length === 0) {
-                     showNotification(`Vấn Đáp Tông Môn: Đã hoàn thành với ${correctCount}/${totalQuestions} câu.`, 'success');
+                     showNotification(`Vấn Đáp: Đã hoàn thành ${correctCount}/${totalQuestions} câu.`, 'success');
                      return;
                 }
 
@@ -232,6 +236,7 @@
         }
     }
 
+    // Hàm điểm danh hàng ngày
     async function doDailyCheckin(nonce) {
         try {
             console.log('[HH3D Daily Check-in] ▶️ Bắt đầu Daily Check-in');
@@ -248,9 +253,9 @@
             const data = await response.json();
 
             if (response.ok && data.success) {
-                showNotification(`Điểm danh ngày: ${data.message} (${data.streak} ngày)`, 'success');
+                showNotification(`Điểm danh: ${data.message} (${data.streak} ngày)`, 'success');
             } else {
-                showNotification(`Điểm danh ngày: ${data.message || 'Lỗi không xác định'}`, 'warn');
+                showNotification(`Điểm danh: ${data.message || 'Lỗi không xác định'}`, 'warn');
             }
         } catch (e) {
             console.error(`[HH3D Daily Check-in] ❌ Lỗi xảy ra:`, e);
@@ -258,101 +263,147 @@
         }
     }
 
-    async function doClanDailyCheckin(nonce) {
-        try {
-            console.log('[HH3D Clan Check-in] ▶️ Bắt đầu Clan Check-in');
-            const url = "https://hoathinh3d.mx/wp-json/tong-mon/v1/te-le-tong-mon";
+    // Hàm tế lễ
+    async function doClanDailyCheckin(nonce) {
+        try {
+            console.log('[HH3D Clan Check-in] ▶️ Bắt đầu Clan Check-in');
+            const url = "https://hoathinh3d.mx/wp-json/tong-mon/v1/te-le-tong-mon";
 
-            const headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:141.0) Gecko/20100101 Firefox/141.0",
-                "Accept": "*/*",
-                "Accept-Language": "vi,en-US;q=0.5",
-                "Content-Type": "application/json",
-                "X-WP-Nonce": nonce,
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-                "Priority": "u=0"
-            };
+            const headers = {
+                "Content-Type": "application/json",
+                "X-WP-Nonce": nonce,
+            };
 
-            const response = await fetch(url, {
-                "credentials": "include",
-                "headers": headers,
-                "referrer": "https://hoathinh3d.mx/danh-sach-thanh-vien-tong-mon",
-                "body": "{}",
-                "method": "POST",
-                "mode": "cors"
-            });
+            const response = await fetch(url, {
+                "credentials": "include",
+                "headers": headers,
+                "referrer": "https://hoathinh3d.mx/danh-sach-thanh-vien-tong-mon",
+                "body": "{}",
+                "method": "POST",
+                "mode": "cors"
+            });
 
-            const data = await response.json();
-            if (response.ok && data.success) {
-                showNotification(`Điểm danh Tông Môn: ${data.message} (${data.cong_hien_points})`, 'success');
-            } else {
-                showNotification(`Điểm danh Tông Môn: ${data.message || 'Lỗi không xác định'}`, 'warn');
-            }
-        } catch (e) {
-            console.error(`[HH3D Clan Check-in] ❌ Lỗi xảy ra:`, e);
-            showNotification(`Lỗi khi thực hiện Clan Check-in: ${e.message}`, 'error');
-        }
-    }
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showNotification(`Tế lễ: ${data.message} (${data.cong_hien_points})`, 'success');
+            } else {
+                showNotification(`Tế lễ: ${data.message || 'Lỗi không xác định'}`, 'warn');
+            }
+        } catch (e) {
+            console.error(`[HH3D Clan Check-in] ❌ Lỗi xảy ra:`, e);
+            showNotification(`Lỗi khi thực hiện Clan Check-in: ${e.message}`, 'error');
+        }
+    }
 
     // ===============================================
     // HÀM HIỂN THỊ THÔNG BÁO
     // ===============================================
+    function showNotification (message, type = 'success', duration = 3000) {
 
-    function showNotification(message, type = 'success') {
-    if (type === 'success') {
-        console.log(`[HH3D Notification] ✅ SUCCESS: ${message}`);
-    } else if (type === 'warn') {
-        console.warn(`[HH3D Notification] ⚠️ WARN: ${message}`);
-    } else {
-        console.error(`[HH3D Notification] ❌ ERROR: ${message}`);
-    }
+        // --- Bắt đầu phần chèn CSS tự động ---
+        if (!isCssInjected) {
+            const style = document.createElement('style');
+            style.type = 'text/css';
+            style.innerHTML = `
+                #hh3d-notification-container {
+                  position: fixed;
+                  top: 20px;
+                  right: 20px;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: flex-end;
+                  gap: 10px;
+                  z-index: 10000;
+                  pointer-events: none;
+                }
 
-    const activeNotifications = document.querySelectorAll('.hh3d-notification-item');
-    const notificationHeight = 40;
-    const notificationGap = 10;
-    const itemHeightWithGap = notificationHeight + notificationGap;
+                .hh3d-notification-item {
+                  padding: 10px 20px;
+                  border-radius: 5px;
+                  color: white;
+                  min-width: 250px;
+                  max-width: 350px;
+                  pointer-events: auto;
+                  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                  transition: all 0.5s ease-in-out;
+                  opacity: 0;
+                  transform: translateX(100%);
+                }
 
-    Array.from(activeNotifications)
-        .reverse()
-        .forEach((notification, index) => {
-            const newTop = 20 + itemHeightWithGap * (index + 1);
-            notification.style.top = `${newTop}px`;
-        });
+                .hh3d-notification-item.success {
+                  background-color: #4CAF50;
+                }
+                .hh3d-notification-item.warn {
+                  background-color: #ff9800;
+                }
+                .hh3d-notification-item.error {
+                  background-color: #f44336;
+                }
+            `;
+            document.head.appendChild(style);
+            isCssInjected = true;
+        }
+        // --- Kết thúc phần chèn CSS tự động ---
 
-    const notification = document.createElement('div');
-    notification.classList.add('hh3d-notification-item');
-    notification.style.position = 'fixed';
-    notification.style.top = '20px';
-    notification.style.right = '20px';
-    notification.style.padding = '10px 20px';
-    notification.style.borderRadius = '5px';
-    notification.style.color = 'white';
-    notification.style.zIndex = '10000';
-    notification.style.transition = 'opacity 0.5s ease-in-out, top 0.5s ease-in-out';
-    notification.style.opacity = '0';
+        // Log console
+        const logPrefix = '[HH3D Notification]';
+        if (type === 'success') {
+            console.log(`${logPrefix} ✅ SUCCESS: ${message}`);
+        } else if (type === 'warn') {
+            console.warn(`${logPrefix} ⚠️ WARN: ${message}`);
+        } else {
+            console.error(`${logPrefix} ❌ ERROR: ${message}`);
+        }
 
-    if (type === 'success') {
-        notification.style.backgroundColor = '#4CAF50';
-    } else if (type === 'warn') {
-        notification.style.backgroundColor = '#ff9800';
-    } else {
-        notification.style.backgroundColor = '#f44336';
-    }
+        // Tạo container nếu chưa tồn tại
+        let container = document.getElementById('hh3d-notification-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'hh3d-notification-container';
+            document.body.appendChild(container);
+        }
 
-    notification.innerText = message;
-    document.body.appendChild(notification);
+        // Tạo item thông báo
+        const notification = document.createElement('div');
+        notification.className = `hh3d-notification-item ${type}`;
+        notification.innerText = message;
 
-    setTimeout(() => {
-        notification.style.opacity = '1';
-    }, 10);
+        container.appendChild(notification);
 
-    setTimeout(() => {
-        notification.style.opacity = '0';
-        setTimeout(() => notification.remove(), 500);
-    }, 3000);
-}
+        // Hiển thị thông báo với hiệu ứng trượt vào
+        requestAnimationFrame(() => {
+            notification.style.opacity = '1';
+            notification.style.transform = 'translateX(0)';
+        });
+
+        // Tự động ẩn và xóa thông báo
+        let timeoutId = setTimeout(() => {
+            notification.style.opacity = '0';
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => notification.remove(), 500);
+        }, duration);
+
+        // Cho phép người dùng tương tác
+        notification.addEventListener('mouseenter', () => {
+            clearTimeout(timeoutId);
+        });
+
+        notification.addEventListener('mouseleave', () => {
+            timeoutId = setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transform = 'translateX(100%)';
+                setTimeout(() => notification.remove(), 500);
+            }, 500);
+        });
+
+        notification.addEventListener('click', () => {
+            clearTimeout(timeoutId);
+            notification.style.opacity = '0';
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => notification.remove(), 500);
+        });
+    };
+
 
     // ===============================================
     // HÀM TẠO UI NÚT MENU TÙY CHỈNH
@@ -448,7 +499,6 @@
                                     console.log('[HH3D Script] 🖱️ Nút Điểm Danh - Tế lễ - Vấn đáp đã được nhấn.');
                                     autoTaskButton.disabled = true;
                                     autoTaskButton.textContent = 'Đang xử lý...';
-                                    showNotification('Đang thực hiện các nhiệm vụ tự động.', 'warn');
 
                                     const nonce = getNonce();
                                     if (!nonce) {

@@ -674,7 +674,8 @@
             const dataTime = await responseTime.json();
 
             if (dataTime.success) {
-                const { time, chest_level } = dataTime.data;
+                const { time, chest_level: chest_level_string } = dataTime.data;
+                const chest_level = parseInt(chest_level_string, 10);
 
                 if (time === '00:00') {
                     if (chest_level >= 4) {

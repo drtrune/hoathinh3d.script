@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          HH3D - Menu Tùy Chỉnh đổ thạch test
+// @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       1.6
+// @version       1.7
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và nút Điểm Danh - Tế lễ - Vấn Đáp tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -37,10 +37,10 @@
             url: weburl + 'hoang-vuc'
         }, {
             text: 'Thí Luyện',
-            url: weburl + 'thi-luyen-tong-mon-hh3d'
+            isThiLuyen: true
         }, {
             text: 'Phúc Lợi',
-            url: weburl + 'phuc-loi-duong'
+            isPhucLoi: true
         }, {
             text: 'Bí Cảnh',
             url: weburl + 'bi-canh-tong-mon'
@@ -75,10 +75,6 @@
         document.head.appendChild(style);
     }
 
-    // ===============================================
-    // HÀM VẤN ĐÁP & ĐIỂM DANH
-    // ===============================================
-
     //Lấy Nonce
     function getNonce() {
         if (typeof Better_Messages !== 'undefined' && Better_Messages.nonce) {
@@ -86,6 +82,45 @@
         }
         return null;
     }
+
+    /**
+     * Lấy security nonce một cách chung chung từ một URL.
+     *
+     * @param {string} url - URL của trang web cần lấy nonce.
+     * @param {RegExp} regex - Biểu thức chính quy (regex) để tìm và trích xuất nonce.
+     * @returns {Promise<string|null>} Trả về security nonce nếu tìm thấy, ngược lại trả về null.
+     */
+    async function getSecurityNonce(url, regex) {
+        // Sử dụng một tiền tố log cố định cho đơn giản
+        const logPrefix = '[HH3D Auto]';
+
+        console.log(`${logPrefix} ▶️ Đang tải trang từ ${url} để lấy security nonce...`);
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const html = await response.text();
+
+            const match = html.match(regex);
+            if (match && match[1]) {
+                const nonce = match[1];
+                console.log(`${logPrefix} ✅ Đã trích xuất thành công security nonce: ${nonce}`);
+                return nonce;
+            } else {
+                console.error(`${logPrefix} ❌ Không tìm thấy security nonce trong mã nguồn.`);
+                return null;
+            }
+        } catch (e) {
+            console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất nonce:`, e);
+            return null;
+        }
+    }
+
+
+    // ===============================================
+    // HÀM VẤN ĐÁP
+    // ===============================================
 
     // Hàm tải đáp án từ GitHub
     function loadAnswersFromGitHub() {
@@ -247,7 +282,9 @@
         }
     }
 
+    // ===============================================
     // Hàm điểm danh hàng ngày
+    // ===============================================
     async function doDailyCheckin(nonce) {
         try {
             console.log('[HH3D Daily Check-in] ▶️ Bắt đầu Daily Check-in');
@@ -278,7 +315,9 @@
         }
     }
 
+    // ===============================================
     // Hàm tế lễ
+    // ===============================================
     async function doClanDailyCheckin(nonce) {
         try {
             console.log('[HH3D Clan Check-in] ▶️ Bắt đầu Clan Check-in');
@@ -313,36 +352,18 @@
     // ===============================================
     // HÀM ĐỔ THẠCH
     // ===============================================
-    
-    // Hàm lấy thông tin đổ thạch được cập nhật để lấy payload chính xác
-// Hàm đã sửa để trả về toàn bộ sessionData
-    async function getDiceRollInfo() {
+
+    /**
+     * Lấy thông tin phiên đổ thạch sử dụng nonce đã lấy được.
+     * @returns {Promise<object|null>} Dữ liệu phiên hoặc null nếu có lỗi.
+     */
+    async function getDiceRollInfo(securityNonce) {
+
         console.log('[HH3D Đổ Thạch] ▶️ Bắt đầu lấy thông tin phiên đổ thạch...');
 
-        let securityNonce = null;
-        let actionName = 'load_do_thach_data';
-
-        const scripts = document.querySelectorAll('script');
-        for (const script of scripts) {
-            if (script.textContent.includes("action: 'load_do_thach_data'")) {
-                const match = script.textContent.match(/action: 'load_do_thach_data',\s*security: '([a-f0-9]+)'/);
-                if (match && match[1]) {
-                    securityNonce = match[1];
-                    console.log(`[HH3D Đổ Thạch] ✅ Đã tìm thấy security nonce: ${securityNonce}`);
-                    break;
-                }
-            }
-        }
-
-        if (!securityNonce) {
-            showNotification('Lỗi: Không tìm thấy security nonce. Vui lòng tải lại trang.', 'error');
-            console.error('[HH3D Đổ Thạch] ❌ Lỗi: Không thể tìm thấy security nonce trong các thẻ script.');
-            return null; // Trả về null nếu không thành công
-        }
-
-        const url = weburl + 'wp-content/themes/halimmovies-child/hh3d-ajax.php';
+        const url = 'https://hoathinh3d.mx/wp-content/themes/halimmovies-child/hh3d-ajax.php';
         const payload = new URLSearchParams();
-        payload.append('action', actionName);
+        payload.append('action', 'load_do_thach_data');
         payload.append('security', securityNonce);
 
         const headers = {
@@ -361,26 +382,29 @@
             if (data.success) {
                 const sessionData = data.data;
                 console.log('[HH3D Đổ Thạch] ✅ Đã tải thông tin phiên đổ thạch thành công.');
-                showNotification('Đã tải thông tin phiên. Xem log console để biết chi tiết.', 'success');
-                return sessionData; // Trả về dữ liệu phiên
+                return sessionData;
             } else {
-                console.error('[HH3D Đổ Thạch] ❌ Lỗi từ API:', data.message || 'Lỗi không xác định');
-                showNotification(`Lỗi khi lấy thông tin đổ thạch: ${data.message || 'Lỗi không xác định'}`, 'error');
-                return null; // Trả về null nếu không thành công
+                console.error('[HH3D Đổ Thạch] ❌ Lỗi từ API:', data.data || 'Lỗi không xác định');
+                return null;
             }
         } catch (e) {
             console.error('[HH3D Đổ Thạch] ❌ Lỗi mạng:', e);
-            showNotification('Lỗi mạng khi lấy thông tin đổ thạch.', 'error');
-            return null; // Trả về null nếu có lỗi
+            return null;
         }
     }
 
+
+    // Hàm chính điều khiển toàn bộ logic Đổ Thạch
     // Hàm chính điều khiển toàn bộ logic Đổ Thạch
     async function doDiceRoll(stoneType) {
         console.log(`[HH3D Đổ Thạch] 🧠 Bắt đầu quy trình tự động với chiến lược: ${stoneType}...`);
 
         // Bước 1: Lấy thông tin phiên đổ thạch
-        const sessionData = await getDiceRollInfo();
+        let securityNonce = await getSecurityNonce('https://hoathinh3d.mx/do-thach-hh3d', /action: 'load_do_thach_data',\s*security: '([a-f0-9]+)'/);
+        if (!securityNonce) {
+            return null;
+        }
+        const sessionData = await getDiceRollInfo(securityNonce);
 
         // Kiểm tra xem dữ liệu có hợp lệ không
         if (!sessionData) {
@@ -393,18 +417,36 @@
 
         // Bước 2: Kiểm tra trạng thái phiên để quyết định hành động
         if (sessionData.winning_stone_id) {
-            // --- Logic nhận thưởng ---
             console.log('[HH3D Đổ Thạch] 🎁 Đã có kết quả phiên. Kiểm tra để nhận thưởng...');
-            const myWinningBet = userBetStones.find(stone => stone.stone_id === sessionData.winning_stone_id && !stone.reward_claimed);
 
-            if (myWinningBet) {
-                console.log(`[HH3D Đổ Thạch] 🎉 Bạn đã trúng! Đá cược: ${myWinningBet.name}. Đang tiến hành nhận thưởng...`);
-                await claimReward(myWinningBet.stone_id);
+            // TÌM LƯỢT CƯỢC TRÚNG NHƯNG CHƯA NHẬN THƯỞNG
+            const claimableWin = userBetStones.find(stone => 
+                stone.stone_id === sessionData.winning_stone_id && stone.reward_claimed === false
+            );
+
+            // TÌM LƯỢT CƯỢC TRÚNG VÀ ĐÃ NHẬN THƯỞNG RỒI (dựa trên gợi ý của bạn)
+            const alreadyClaimed = userBetStones.find(stone => 
+                stone.stone_id === sessionData.winning_stone_id && stone.reward_claimed === true
+            );
+
+            if (claimableWin) {
+                // TRƯỜNG HỢP 1: Thắng và chưa nhận thưởng -> Gọi API nhận
+                console.log(`[HH3D Đổ Thạch] 🎉 Bạn đã trúng! Đá cược: ${claimableWin.name}. Đang tiến hành nhận thưởng...`);
+                await claimReward(securityNonce);
+
+            } else if (alreadyClaimed) {
+                // TRƯỜNG HỢP 2: Thắng và đã nhận thưởng rồi -> Chỉ thông báo
+                console.log(`[HH3D Đổ Thạch] ✅ Bạn đã nhận thưởng rồi.`);
+
             } else if (userBetStones.length > 0) {
-                console.log('[HH3D Đổ Thạch] 🥲 Bạn đã không trúng hoặc không có cược nào.');
+                // TRƯỜNG HỢP 3: Có cược nhưng không trúng -> Thông báo
+                console.log('[HH3D Đổ Thạch] 🥲 Rất tiếc, bạn đã không trúng thưởng phiên này.');
+
             } else {
+                // TRƯỜNG HỢP 4: Không cược -> Thông báo
                 console.log('[HH3D Đổ Thạch] 😶 Bạn đã không tham gia phiên này.');
             }
+            
             return;
         }
 
@@ -424,7 +466,7 @@
             return;
         }
 
-        const betAmount = 1;
+        const betAmount = 20; // Số tiền đặt cược cố định
         const stonesToBet = [];
 
         if (stoneType === 'tài' || stoneType === 'tai') {
@@ -446,13 +488,239 @@
 
         if (stonesToBet.length > 0) {
             for (const stone of stonesToBet) {
-                if (!stone.bet_placed) {
-                    console.log(`[HH3D Đổ Thạch] 🪙 Chuẩn bị đặt cược ${betAmount} Tiên Ngọc vào đá "${stone.name}" (ID: ${stone.stone_id})...`);
-                    await placeBet(stone.stone_id, betAmount);
-                }
+                // Đã sửa lỗi: Bỏ điều kiện if (!stone.bet_placed) dư thừa.
+                console.log(`[HH3D Đổ Thạch] 🪙 Chuẩn bị đặt cược ${betAmount} Tiên Ngọc vào đá "${stone.name}" (ID: ${stone.stone_id})...`);
+                await placeBet(stone.stone_id, betAmount, securityNonce);
             }
         } else {
             console.log('[HH3D Đổ Thạch] ⚠️ Không có đá nào được chọn để đặt cược.');
+        }
+    }
+
+    /**
+     * Gửi yêu cầu đặt cược đến server.
+     * @param {string} stoneId - ID của viên đá muốn đặt cược.
+     * @param {number} betAmount - Số tiền (Tiên Ngọc) muốn đặt cược.
+     * @returns {Promise<boolean>} True nếu đặt cược thành công, ngược lại là False.
+     */
+    async function placeBet(stoneId, betAmount, securityNonce) {
+        console.log(`[HH3D Đặt Cược] 🪙 Đang tiến hành đặt cược ${betAmount} Tiên Ngọc vào đá ID: ${stoneId}...`);
+
+        const url = 'https://hoathinh3d.mx/wp-content/themes/halimmovies-child/hh3d-ajax.php';
+        const payload = new URLSearchParams();
+        payload.append('action', 'place_do_thach_bet');
+        payload.append('security', securityNonce);
+        payload.append('stone_id', stoneId);
+        payload.append('bet_amount', betAmount);
+
+        const headers = {
+            'Accept': '*/*', // <--- Đã thêm header này
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: payload
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                console.log(`[HH3D Đặt Cược] ✅ Đặt cược thành công vào đá ID "${stoneId}"!`);
+                return true;
+            } else {
+                const errorMessage = data.data || data.message || 'Lỗi không xác định từ server.';
+                console.error(`[HH3D Đặt Cược] ❌ Lỗi khi đặt cược:`, errorMessage);
+                return false;
+            }
+        } catch (e) {
+            console.error('[HH3D Đặt Cược] ❌ Lỗi mạng khi đặt cược:', e);
+            return false;
+        }
+    }
+
+    // Hàm nhận thưởng sau khi đã trúng
+    async function claimReward(securityNonce) {
+        console.log('[HH3D Nhận Thưởng] 🎁 Đang tiến hành nhận thưởng...');
+
+        const url = 'https://hoathinh3d.mx/wp-content/themes/halimmovies-child/hh3d-ajax.php';
+        const payload = new URLSearchParams();
+        payload.append('action', 'claim_do_thach_reward');
+        payload.append('security', securityNonce);
+
+        const headers = {
+            'Accept': 'application/json, text/javascript, */*; q=0.01', // Thêm header này
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: payload
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                const rewardMessage = data.data && data.data.message ? data.data.message : `Nhận thưởng thành công!`;
+                console.log(`[HH3D Nhận Thưởng] ✅ ${rewardMessage}`);
+                return true;
+            } else {
+                const errorMessage = data.data && data.data.message ? data.data.message : 'Lỗi không xác định khi nhận thưởng.';
+                console.error(`[HH3D Nhận Thưởng] ❌ Lỗi khi nhận thưởng:`, errorMessage);
+                return false;
+            }
+        } catch (e) {
+            console.error('[HH3D Nhận Thưởng] ❌ Lỗi mạng khi nhận thưởng:', e);
+            return false;
+        }
+    }
+    
+    // ===============================================
+    // THÍ LUYỆN TÔNG MÔN
+    // ===============================================
+
+    async function doThiLuyenTongMon() {
+        console.log('[HH3D Thí Luyện Tông Môn] ▶️ Bắt đầu Thí Luyện Tông Môn');
+
+        // Bước 1: Lấy security nonce. 
+        const securityNonce = await getSecurityNonce('https://hoathinh3d.mx/thi-luyen-tong-mon-hh3d', /action: 'open_chest_tltm',\s*security: '([a-f0-9]+)'/);
+        if (!securityNonce) {
+            console.error('[HH3D Thí Luyện Tông Môn] ❌ Không thể lấy security nonce.');
+            showNotification('Lỗi khi lấy security nonce cho Thí Luyện Tông Môn.', 'error');
+            return;
+        }
+
+        const url = 'https://hoathinh3d.mx/wp-content/themes/halimmovies-child/hh3d-ajax.php';
+        const payload = new URLSearchParams();
+        payload.append('action', 'open_chest_tltm');
+        payload.append('security', securityNonce);
+
+        const headers = {
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: payload,
+                credentials: 'include' // Quan trọng để gửi cookies
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Trường hợp thành công
+                const message = data.data && data.data.message ? data.data.message : 'Mở rương thành công!';
+                console.log(`[Thí Luyện Tông Môn] ✅ ${message}`);
+                // Show thông báo chi tiết nếu có
+                if (data.data.tinh_thach) {
+                    showNotification(`[Thí Luyện Tông Môn] Đã nhận được ${data.data.tinh_thach} Tinh Thạch!`, 'success');
+                } else {
+                    showNotification(message, 'success');
+                }
+            } else {
+                // Trường hợp thất bại
+                const errorMessage = data.data && data.data.message ? data.data.message : 'Lỗi không xác định khi mở rương.';
+                console.error(`[ Thí Luyện Tông Môn] ❌ Lỗi:`, errorMessage);
+                showNotification(`[Thí Luyện Tông Môn] ${errorMessage} `, 'error');
+            }
+        } catch (e) {
+            console.error('[HH3D Thí Luyện Tông Môn] ❌ Lỗi mạng:', e);
+            showNotification('Lỗi mạng khi thực hiện Thí Luyện Tông Môn.', 'error');
+        }
+    }
+
+    // ===============================================
+    // PHÚC LỢI
+    // ===============================================
+    async function doPhucLoiDuong() {
+        console.log('[HH3D Phúc Lợi Đường] ▶️ Bắt đầu nhiệm vụ Phúc Lợi Đường.');
+
+        // Bước 1: Lấy security nonce từ trang Phúc Lợi Đường
+        const securityNonce = await getSecurityNonce('https://hoathinh3d.mx/phuc-loi-duong', /action: 'get_next_time_pl',\s*security: '([a-f0-9]+)'/);
+        if (!securityNonce) {
+            console.error('[HH3D Phúc Lợi Đường] ❌ Không thể lấy security nonce.');
+            showNotification('Lỗi khi lấy security nonce cho Phúc Lợi Đường.', 'error');
+            return;
+        }
+        
+        const url = 'https://hoathinh3d.mx/wp-content/themes/halimmovies-child/hh3d-ajax.php';
+        const headers = {
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+        };
+
+        // Bước 2: Lấy thông tin thời gian còn lại và cấp độ rương
+        console.log('[HH3D Phúc Lợi Đường] ⏲️ Đang kiểm tra thời gian mở rương...');
+        const payloadTime = new URLSearchParams();
+        payloadTime.append('action', 'get_next_time_pl');
+        payloadTime.append('security', securityNonce);
+        
+        try {
+            const responseTime = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: payloadTime,
+                credentials: 'include'
+            });
+            const dataTime = await responseTime.json();
+
+            if (dataTime.success) {
+                const { time, chest_level } = dataTime.data;
+
+                if (time === '00:00') {
+                    if (chest_level >= 4) {
+                        console.log('[HH3D Phúc Lợi Đường] ✅ Đã mở đủ 4 rương hôm nay. Nhiệm vụ hoàn tất.');
+                        showNotification('Phúc Lợi Đường đã hoàn tất hôm nay!', 'success');
+                        return;
+                    }
+
+                    // Bước 3: Nếu thời gian bằng 00:00, tiến hành mở rương
+                    console.log(`[HH3D Phúc Lợi Đường] 🎁 Đang mở rương cấp ${chest_level + 1}...`);
+                    const payloadOpen = new URLSearchParams();
+                    payloadOpen.append('action', 'open_chest_pl');
+                    payloadOpen.append('security', securityNonce);
+                    payloadOpen.append('chest_id', chest_level + 1);
+
+                    const responseOpen = await fetch(url, {
+                        method: 'POST',
+                        headers: headers,
+                        body: payloadOpen,
+                        credentials: 'include'
+                    });
+                    const dataOpen = await responseOpen.json();
+
+                    if (dataOpen.success) {
+                        const message = dataOpen.data && dataOpen.data.message ? dataOpen.data.message : 'Mở rương thành công!';
+                        console.log(`[HH3D Phúc Lợi Đường] ✅ ${message}`);
+                        showNotification(message, 'success');
+                    } else {
+                        const errorMessage = dataOpen.data && dataOpen.data.message ? dataOpen.data.message : 'Lỗi không xác định khi mở rương.';
+                        console.error(`[HH3D Phúc Lợi Đường] ❌ Lỗi khi mở rương:`, errorMessage);
+                        showNotification(errorMessage, 'error');
+                    }
+                } else {
+                    // Trường hợp còn thời gian
+                    const message = `Vui lòng đợi ${time} để mở rương tiếp theo.`;
+                    console.log(`[HH3D Phúc Lợi Đường] ⏳ ${message}`);
+                    showNotification(message, 'warn');
+                }
+            } else {
+                const errorMessage = dataTime.data && dataTime.data.message ? dataTime.data.message : 'Lỗi không xác định khi lấy thời gian.';
+                console.error(`[HH3D Phúc Lợi Đường] ❌ Lỗi:`, errorMessage);
+                showNotification(errorMessage, 'error');
+            }
+        } catch (e) {
+            console.error('[HH3D Phúc Lợi Đường] ❌ Lỗi mạng:', e);
+            showNotification('Lỗi mạng khi thực hiện Phúc Lợi Đường.', 'error');
         }
     }
 
@@ -724,7 +992,7 @@
                 background-color: #c0392b;
             }
         `);
-        
+
         const notificationsDivSelector = '.load-notification.relative';
 
         const observer = new MutationObserver((mutationsList, observer) => {
@@ -784,8 +1052,7 @@
                                     // Gọi tuần tự các hàm
                                     await doDailyCheckin(nonce);
                                     await doClanDailyCheckin(nonce);
-                                    await doVanDap(nonce);
-
+                                    await doVanDap(nonce)
                                     autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
                                     autoTaskButton.disabled = false;
                                     console.log('[HH3D Script] ✅ Tất cả nhiệm vụ đã hoàn thành.');
@@ -794,7 +1061,37 @@
                             } else if (link.isDiceRoll) {
                                 groupDiv.className = 'custom-script-menu-group-dice-roll';
                                 createDiceRollMenu(groupDiv);
-                            } else {
+                            } else if (link.isThiLuyen) {
+                                const thiLuyenButton = document.createElement('button');
+                                thiLuyenButton.textContent = link.text;
+                                thiLuyenButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
+
+                                thiLuyenButton.addEventListener('click', async() => {
+                                    console.log('[HH3D Script] 🖱️ Nút Thí Luyện Tông Môn đã được nhấn.');
+                                    thiLuyenButton.disabled = true;
+                                    thiLuyenButton.textContent = 'Đang xử lý...';
+                                    await doThiLuyenTongMon();
+                                    thiLuyenButton.textContent = 'Thí Luyện';
+                                    thiLuyenButton.disabled = false;
+                                    console.log('[HH3D Script] ✅ Thí Luyện Tông Môn đã hoàn thành.');
+                                });
+                                groupDiv.appendChild(thiLuyenButton);
+                            } else if (link.isPhucLoi) {
+                                const phucLoiButton = document.createElement('button');
+                                phucLoiButton.textContent = link.text;
+                                phucLoiButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
+                                phucLoiButton.addEventListener('click', async() => {
+                                    console.log('[HH3D Script] 🖱️ Nút Phúc Lợi đã được nhấn');
+                                    phucLoiButton.disabled = true;
+                                    phucLoiButton.textContent = 'Đang xử lý...';
+                                    await doPhucLoiDuong();
+                                    phucLoiButton.textContent = 'Phúc Lợi';
+                                    phucLoiButton.disabled = false;
+                                    console.log('[HH3D Script] ✅ Phúc Lợi đã hoàn thành.');
+                                });
+                                groupDiv.appendChild(phucLoiButton);
+                            } 
+                            else {
                                 const menuItem = document.createElement('a');
                                 menuItem.classList.add('custom-script-menu-link');
                                 menuItem.href = link.url;

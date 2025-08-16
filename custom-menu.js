@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       1.8
+// @version       1.9
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
-// @run-at        document-start
+// @run-at        document-idle
 // @grant         GM_xmlhttpRequest
 // @connect       raw.githubusercontent.com
 // ==/UserScript==
@@ -486,10 +486,11 @@
             return;
         }
 
+        const placeBetSecurity = await getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'place_do_thach_bet',\s*security: '([a-f0-9]+)'/);
+        console.log(`Place Bet Security: ${placeBetSecurity}`);
         if (stonesToBet.length > 0) {
             for (const stone of stonesToBet) {
                 console.log(`[HH3D Đổ Thạch] 🪙 Chuẩn bị đặt cược ${betAmount} Tiên Ngọc vào đá "${stone.name}" (ID: ${stone.stone_id})...`);
-                const placeBetSecurity = getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'place_do_thach_bet',\s*security: '([a-f0-9]+)'/);
                 await placeBet(stone, betAmount, placeBetSecurity);
             }
         } else {
@@ -529,7 +530,7 @@
             const data = await response.json();
 
             if (data.success) {
-                showNotification(`✅ Đặt cược thành công vào "${stone.name}"!`, 'success');
+                showNotification(`✅ Đặt cược thành công vào ${stone.name}! Tỷ lệ x${stone.reward_multiplier}`, 'success');
                 return true;
             } else {
                 const errorMessage = data.data || data.message || 'Lỗi không xác định từ server.';

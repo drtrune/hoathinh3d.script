@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       1.9
+// @version       2.0
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -487,7 +487,10 @@
         }
 
         const placeBetSecurity = await getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'place_do_thach_bet',\s*security: '([a-f0-9]+)'/);
-        console.log(`Place Bet Security: ${placeBetSecurity}`);
+        if (!placeBetSecurity) {
+            showNotification('Lỗi khi lấy security nonce để đặt cược.', 'error');
+            return;
+        }
         if (stonesToBet.length > 0) {
             for (const stone of stonesToBet) {
                 console.log(`[HH3D Đổ Thạch] 🪙 Chuẩn bị đặt cược ${betAmount} Tiên Ngọc vào đá "${stone.name}" (ID: ${stone.stone_id})...`);
@@ -550,6 +553,10 @@
         const url = ajaxUrl;
         const payload = new URLSearchParams();
         const securityNonce = await getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'claim_do_thach_reward',\s*security: '([a-f0-9]+)'/);
+        if (!securityNonce) {
+            showNotification('Lỗi khi lấy security nonce để nhận thưởng.', 'error');
+            return false;
+        }
         payload.append('action', 'claim_do_thach_reward');
         payload.append('security', securityNonce);
 
@@ -592,7 +599,6 @@
         // Bước 1: Lấy security nonce. 
         const securityNonce = await getSecurityNonce(weburl + 'thi-luyen-tong-mon-hh3d', /action: 'open_chest_tltm',\s*security: '([a-f0-9]+)'/);
         if (!securityNonce) {
-            console.error('[HH3D Thí Luyện Tông Môn] ❌ Không thể lấy security nonce.');
             showNotification('Lỗi khi lấy security nonce cho Thí Luyện Tông Môn.', 'error');
             return;
         }
@@ -631,11 +637,9 @@
             } else {
                 // Trường hợp thất bại
                 const errorMessage = data.data && data.data.message ? data.data.message : 'Lỗi không xác định khi mở rương.';
-                console.error(`[ Thí Luyện Tông Môn] ❌ Lỗi:`, errorMessage);
                 showNotification(`[Thí Luyện Tông Môn] ${errorMessage} `, 'error');
             }
         } catch (e) {
-            console.error('[HH3D Thí Luyện Tông Môn] ❌ Lỗi mạng:', e);
             showNotification('Lỗi mạng khi thực hiện Thí Luyện Tông Môn.', 'error');
         }
     }
@@ -649,7 +653,6 @@
         // Bước 1: Lấy security nonce từ trang Phúc Lợi Đường
         const securityNonce = await getSecurityNonce(weburl + 'phuc-loi-duong', /action: 'get_next_time_pl',\s*security: '([a-f0-9]+)'/);
         if (!securityNonce) {
-            console.error('[HH3D Phúc Lợi Đường] ❌ Không thể lấy security nonce.');
             showNotification('Lỗi khi lấy security nonce cho Phúc Lợi Đường.', 'error');
             return;
         }
@@ -682,7 +685,6 @@
 
                 if (time === '00:00') {
                     if (chest_level >= 4) {
-                        console.log('[HH3D Phúc Lợi Đường] ✅ Đã mở đủ 4 rương hôm nay. Nhiệm vụ hoàn tất.');
                         showNotification('Phúc Lợi Đường đã hoàn tất hôm nay!', 'success');
                         return;
                     }
@@ -704,27 +706,22 @@
 
                     if (dataOpen.success) {
                         const message = dataOpen.data && dataOpen.data.message ? dataOpen.data.message : 'Mở rương thành công!';
-                        console.log(`[HH3D Phúc Lợi Đường] ✅ ${message}`);
                         showNotification(message, 'success');
                     } else {
                         const errorMessage = dataOpen.data && dataOpen.data.message ? dataOpen.data.message : 'Lỗi không xác định khi mở rương.';
-                        console.error(`[HH3D Phúc Lợi Đường] ❌ Lỗi khi mở rương:`, errorMessage);
                         showNotification(errorMessage, 'error');
                     }
                 } else {
                     // Trường hợp còn thời gian
                     const message = `Vui lòng đợi ${time} để mở rương tiếp theo.`;
-                    console.log(`[HH3D Phúc Lợi Đường] ⏳ ${message}`);
                     showNotification(message, 'warn');
                 }
             } else {
                 const errorMessage = dataTime.data && dataTime.data.message ? dataTime.data.message : 'Lỗi không xác định khi lấy thời gian.';
-                console.error(`[HH3D Phúc Lợi Đường] ❌ Lỗi:`, errorMessage);
                 showNotification(errorMessage, 'error');
             }
         } catch (e) {
-            console.error('[HH3D Phúc Lợi Đường] ❌ Lỗi mạng:', e);
-            showNotification('Lỗi mạng khi thực hiện Phúc Lợi Đường.', 'error');
+            showNotification(`Lỗi mạng khi thực hiện Phúc Lợi Đường: ${e}`, 'error');
         }
     }
 
@@ -803,237 +800,292 @@
     // ===============================================
     // HOANG VỰC
     // ===============================================
-    // @param {boolean} maximizeDamage - true: tối đa hóa sát thương (khắc chế), false: tối thiểu hóa giảm sát thương (không bị khắc).
- 
-    async function doHoangVuc(maximizeDamage = true) {
-        console.log(`[HH3D Hoang Vực] ▶️ Bắt đầu nhiệm vụ với chiến lược: ${maximizeDamage ? 'Tối đa hóa Sát thương' : 'Không giảm Sát thương'}.`);
 
-        const ajaxUrl = weburl + 'wp-content/themes/halimmovies-child/hh3d-ajax.php';
-        const adminAjaxUrl = weburl + 'wp-admin/admin-ajax.php';
-        const hoangVucUrl = weburl + 'hoang-vuc';
-
-        // Bước 1: Tải trang và lấy nonce.
-        const nonce = await getSecurityNonce(hoangVucUrl, /var ajax_boss_nonce = '([a-f0-9]+)'/);
-        if (!nonce) {
-            showNotification('Lỗi: Không thể lấy nonce cho Hoang Vực.', 'error');
-            return;
+    class HoangVuc {
+        constructor() {
+            this.ajaxUrl = `${weburl}wp-content/themes/halimmovies-child/hh3d-ajax.php`;
+            this.adminAjaxUrl = `${weburl}wp-admin/admin-ajax.php`;
+            this.logPrefix = "[HH3D Hoang Vực]";
+            this.headers = {
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest",
+            };
+        }
+        /**
+         * Lấy nguyên tố của người dùng từ trang Hoang Vực.
+         */
+        async getMyElement() {
+            const url = weburl + 'hoang-vuc';
+            const response = await fetch(url);
+            const text = await response.text();
+            const regex = /<img id="user-nguhanh-image".*?src=".*?ngu-hanh-(.*?)\.gif"/;
+            const match = text.match(regex);
+            if (match && match[1]) {
+                const element = match[1];
+                console.log(`${this.logPrefix} ✅ Đã lấy được nguyên tố của bạn: ${element}`);
+                return element;
+            } else {
+                console.error(`${this.logPrefix} ❌ Không tìm thấy nguyên tố của người dùng.`);
+                return null;
+            }
         }
 
-        const headers = {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-        };
+        /**
+         * Xác định nguyên tố tối ưu dựa trên boss và chiến lược.
+         * @param {string} bossElement - Nguyên tố của boss.
+         * @param {boolean} maximizeDamage - true: tối đa hóa sát thương; false: tránh giảm sát thương.
+         * @returns {Array<string>} Mảng chứa các nguyên tố phù hợp.
+         */
+        getTargetElement(bossElement, maximizeDamage) {
+            const rules = {
+                'kim': { khắc: 'moc', bị_khắc: 'hoa' },
+                'moc': { khắc: 'tho', bị_khắc: 'kim' },
+                'thuy': { khắc: 'hoa', bị_khắc: 'tho' },
+                'hoa': { khắc: 'kim', bị_khắc: 'thuy' },
+                'tho': { khắc: 'thuy', bị_khắc: 'moc' },
+            };
 
-        // Bước 2: Lấy thông tin boss.
-        console.log('[HH3D Hoang Vực] ℹ️ Đang lấy thông tin boss...');
-        const payloadBossInfo = new URLSearchParams();
-        payloadBossInfo.append('action', 'get_boss');
-        payloadBossInfo.append('nonce', nonce);
+            const suitableElements = [];
 
-        try {
-            const bossInfoResponse = await fetch(ajaxUrl, {
+            if (maximizeDamage) {
+                // Tối đa hóa sát thương: tìm nguyên tố khắc boss
+                for (const myElement in rules) {
+                    if (rules[myElement].khắc === bossElement) {
+                        suitableElements.push(myElement);
+                        break; // Chỉ cần một nguyên tố khắc là đủ
+                    }
+                }
+            } else {
+                // Không bị giảm sát thương: tìm tất cả các nguyên tố không bị boss khắc
+                for (const myElement in rules) {
+                    if (rules[myElement].bị_khắc !== bossElement) {
+                        suitableElements.push(myElement);
+                    }
+                }
+            }
+            return suitableElements;
+        }
+
+        /**
+         * Nhận thưởng Hoang Vực.
+         */
+        async claimHoangVucRewards(nonce) {
+            const payload = new URLSearchParams();
+            payload.append('action', 'claim_chest');
+            payload.append('nonce', nonce);
+
+            console.log(`${this.logPrefix} 🎁 Đang nhận thưởng...`);
+            const response = await fetch(this.adminAjaxUrl, {
                 method: 'POST',
-                headers: headers,
-                body: payloadBossInfo,
+                headers: this.headers,
+                body: payload,
                 credentials: 'include'
             });
-            const bossInfoData = await bossInfoResponse.json();
+            const data = await response.json();
+            if (data.success) {
+                const rewards = data.total_rewards;
+                const message = `✅ Nhận thưởng thành công: +${rewards.tinh_thach} Tinh Thạch, +${rewards.tu_vi} Tu Vi.`;
+                console.log(message);
+                showNotification(message, 'success');
+            } else {
+                console.error(`${this.logPrefix} ❌ Lỗi khi nhận thưởng:`, data.message || 'Lỗi không xác định.');
+                showNotification(data.message || 'Lỗi khi nhận thưởng.', 'error');
+            }
+        }
 
-            if (bossInfoData.success) {
-                const boss = bossInfoData.data;
-                const myElement = window.HoangVucConfig.myElement;
-                const bossElement = boss.element;
+        /**
+         * Tấn công boss Hoang Vực.
+         */
+        async attackHoangVucBoss(bossId, nonce) {
+            const currentTime = Date.now();
+            const payload = new URLSearchParams();
+            payload.append('action', 'attack_boss');
+            payload.append('boss_id', bossId);
+            payload.append('nonce', nonce);
+            payload.append('request_id', `req_${Math.random().toString(36).substring(2, 8)}${currentTime}`);
+            
+            console.log(`${this.logPrefix} ⚔️ Đang tấn công boss...`);
+            const response = await fetch(this.ajaxUrl, {
+                method: 'POST',
+                headers: this.headers,
+                body: payload,
+                credentials: 'include'
+            });
+            const data = await response.json();
+            if (data.success) {
+                const message = `✅ Tấn công boss hoang vực thành công`;
+                console.log(message);
+                showNotification(message, 'success');
+            } else {
+                const errorMessage = data.message || 'Lỗi không xác định khi tấn công.';
+                console.error(`${this.logPrefix} ❌ Lỗi tấn công:`, errorMessage);
+                showNotification(errorMessage, 'error');
+            }
+        }
 
-                // Nếu boss đã chết, nhận thưởng và kết thúc.
-                if (boss.defeated_time !== null && boss.has_pending_rewards) {
-                    await claimHoangVucRewards(nonce, adminAjaxUrl, headers);
-                    return;
-                } else if (boss.created_time === dataTime(today, 'YYYY-MM-DD') && boss.health === boss.max_health) {
-                    showNotification('Boss Hoang vực đã bị phong ấn', 'info');
-                    return;
-                }
+        /**
+         * Lặp lại việc đổi nguyên tố cho đến khi đạt được nguyên tố phù hợp hoặc không thể đổi tiếp.
+         * @param {string} currentElement - Nguyên tố hiện tại của người dùng.
+         * @param {string} bossElement - Nguyên tố của boss.
+         * @param {boolean} maximizeDamage - Chiến lược tối đa hóa sát thương hay không.
+         * @param {string} nonce - Nonce bảo mật.
+         * @returns {Promise<string|null>} Nguyên tố mới nếu đổi thành công, ngược lại là null.
+         */
+        async changeElementUntilSuitable(currentElement, bossElement, maximizeDamage, nonce) {
+            let myElement = currentElement;
+            let changeAttempts = 0;
+            const MAX_ATTEMPTS = 5;
 
-                // Logic đổi nguyên tố.
-                const targetElement = getTargetElement(bossElement, maximizeDamage);
-                if (myElement !== targetElement) {
-                    console.log(`[HH3D Hoang Vực] 🔄 Nguyên tố hiện tại (${myElement}) không phù hợp. Đang kiểm tra lượt đổi...`);
-                    await checkAndChangeElement(nonce, ajaxUrl, headers, targetElement);
+            const rules = {
+                'kim':  { khắc: 'moc',  bị_khắc: 'hoa' },
+                'moc':  { khắc: 'tho',  bị_khắc: 'kim' },
+                'thuy': { khắc: 'hoa',  bị_khắc: 'tho' },
+                'hoa':  { khắc: 'kim',  bị_khắc: 'thuy' },
+                'tho':  { khắc: 'thuy', bị_khắc: 'moc' },
+            };
+
+            function isOptimal(el) {
+                return rules[el].khắc === bossElement;
+            }
+            function isNeutral(el) {
+                return rules[el].bị_khắc !== bossElement;
+            }
+
+            while (changeAttempts < MAX_ATTEMPTS) {
+                changeAttempts++;
+
+                const currentlyOptimal = isOptimal(myElement);
+                const currentlyNeutral = isNeutral(myElement);
+
+                // 🔎 Kiểm tra trước khi đổi
+                if (!currentlyNeutral) {
+                    console.log(`${this.logPrefix} ❌ Đang bị boss khắc chế -> phải đổi.`);
                 } else {
-                    console.log(`[HH3D Hoang Vực] ✅ Nguyên tố hiện tại (${myElement}) đã phù hợp. Không cần đổi.`);
+                    if (maximizeDamage && currentlyOptimal) {
+                        console.log(`${this.logPrefix} 🌟 Đang ở trạng thái tối ưu. Dừng đổi.`);
+                        return myElement;
+                    }
+                    if (!maximizeDamage && currentlyNeutral) {
+                        console.log(`${this.logPrefix} ✅ Đang ở trạng thái hòa (không bị giảm). Dừng đổi.`);
+                        return myElement;
+                    }
                 }
 
-                // Kiểm tra thời gian hồi chiêu và tấn công.
-                console.log('[HH3D Hoang Vực] ⏲️ Đang kiểm tra thời gian hồi chiêu...');
-                const timePayload = new URLSearchParams();
-                timePayload.append('action', 'get_next_attack_time');
-
-                const timeResponse = await fetch(ajaxUrl, {
+                // 🔄 Tiến hành đổi element
+                const payloadChange = new URLSearchParams({ action: 'change_user_element', nonce });
+                const changeData = await (await fetch(this.ajaxUrl, {
                     method: 'POST',
-                    headers: headers,
-                    body: timePayload,
+                    headers: this.headers,
+                    body: payloadChange,
+                    credentials: 'include'
+                })).json();
+
+                if (changeData.success) {
+                    myElement = changeData.data.new_element;
+                    console.log(`${this.logPrefix} 🔄 Đổi lần ${changeAttempts} -> ${myElement}`);
+                } else {
+                    console.error(`${this.logPrefix} ❌ Lỗi khi đổi:`, changeData.message || 'Không xác định.');
+                    return myElement;
+                }
+            }
+
+            // ⏳ Hết lượt đổi nhưng vẫn chưa đạt chiến lược
+            console.log(`${this.logPrefix} ⚠️ Đã hết MAX_ATTEMPTS (${MAX_ATTEMPTS}). Chấp nhận nguyên tố cuối cùng: ${myElement}`);
+            return myElement;
+        }
+
+
+        /**
+         * Hàm chính để tự động hóa Hoang Vực.
+         */
+        async doHoangVuc(maximizeDamage = true) {
+            console.log(`${this.logPrefix} ▶️ Bắt đầu nhiệm vụ với chiến lược: ${maximizeDamage ? 'Tối đa hóa Sát thương' : 'Không giảm Sát thương'}.`);
+
+            const hoangVucUrl = `${weburl}hoang-vuc`;
+            const nonce = await getSecurityNonce(hoangVucUrl, /var ajax_boss_nonce = '([a-f0-9]+)'/);
+            if (!nonce) {
+                showNotification('Lỗi: Không thể lấy nonce cho Hoang Vực.', 'error');
+                return;
+            }
+
+            const payloadBossInfo = new URLSearchParams();
+            payloadBossInfo.append('action', 'get_boss');
+            payloadBossInfo.append('nonce', nonce);
+
+            try {
+                const bossInfoResponse = await fetch(this.ajaxUrl, {
+                    method: 'POST',
+                    headers: this.headers,
+                    body: payloadBossInfo,
                     credentials: 'include'
                 });
-                const nextAttackTime = await timeResponse.json();
+                const bossInfoData = await bossInfoResponse.json();
 
-                if (nextAttackTime.success) {
-                    const currentTime = Date.now();
-                    if (currentTime >= nextAttackTime.data) {
-                        await attackHoangVucBoss(boss.id, nonce, ajaxUrl, headers);
+                if (bossInfoData.success) {
+                    const boss = bossInfoData.data;
+
+                    if (boss.defeated_time !== null && boss.has_pending_rewards) {
+                        await this.claimHoangVucRewards(nonce);
+                        return;
+                    } else if (boss.created_time === new Date().toISOString().slice(0, 10) && boss.health === boss.max_health) {
+                        showNotification('Boss Hoang vực đã bị phong ấn', 'info');
+                        return;
+                    }
+
+                    let myElement = await this.getMyElement();
+                    const bossElement = boss.element;
+                    
+                    // Lấy danh sách các nguyên tố phù hợp
+                    const suitableElements = this.getTargetElement(bossElement, maximizeDamage);
+                    
+                    if (!suitableElements.includes(myElement)) {
+                        console.log(`${this.logPrefix} 🔄 Nguyên tố hiện tại (${myElement}) không phù hợp. Đang thực hiện đổi.`);
+                        const newElement = await this.changeElementUntilSuitable(myElement, bossElement, maximizeDamage, nonce);
+
+                        if (newElement && suitableElements.includes(newElement)) {
+                            myElement = newElement;
+                            console.log(`${this.logPrefix} ✅ Đã có được nguyên tố phù hợp: ${myElement}.`);
+                        } else {
+                            console.log(`${this.logPrefix} ⚠️ Không thể có được nguyên tố phù hợp sau khi đổi. Tiếp tục với nguyên tố hiện tại.`);
+                        }
                     } else {
-                        const remainingTime = nextAttackTime.data - currentTime;
+                        console.log(`${this.logPrefix} ✅ Nguyên tố hiện tại (${myElement}) đã phù hợp. Không cần đổi.`);
+                    }
+                    
+                    const timePayload = new URLSearchParams();
+                    timePayload.append('action', 'get_next_attack_time');
+                    const timeResponse = await fetch(this.ajaxUrl, {
+                        method: 'POST',
+                        headers: this.headers,
+                        body: timePayload,
+                        credentials: 'include'
+                    });
+                    const nextAttackTime = await timeResponse.json();
+
+                    if (nextAttackTime.success && Date.now() >= nextAttackTime.data) {
+                        await this.attackHoangVucBoss(boss.id, nonce);
+                    } else {
+                        const remainingTime = nextAttackTime.data - Date.now();
                         const remainingSeconds = Math.floor(remainingTime / 1000);
                         const minutes = Math.floor(remainingSeconds / 60);
                         const seconds = remainingSeconds % 60;
                         const message = `⏳ Cần chờ ${minutes} phút ${seconds} giây để tấn công tiếp theo.`;
-                        console.log(`[HH3D Hoang Vực] ${message}`);
+                        console.log(`${this.logPrefix} ${message}`);
                         showNotification(message, 'info');
                     }
                 } else {
-                    console.error('[HH3D Hoang Vực] ❌ Lỗi khi lấy thời gian tấn công tiếp theo.');
-                    showNotification('Lỗi khi lấy thời gian tấn công Hoang Vực.', 'error');
+                    const errorMessage = bossInfoData.message || 'Lỗi không xác định khi lấy thông tin boss.';
+                    console.error(`${this.logPrefix} ❌ Lỗi:`, errorMessage);
+                    showNotification(errorMessage, 'error');
                 }
-            } else {
-                const errorMessage = bossInfoData.message || 'Lỗi không xác định khi lấy thông tin boss.';
-                console.error(`[HH3D Hoang Vực] ❌ Lỗi:`, errorMessage);
-                showNotification(errorMessage, 'error');
+            } catch (e) {
+                console.error(`${this.logPrefix} ❌ Lỗi mạng:`, e);
+                showNotification('Lỗi mạng khi thực hiện Hoang Vực.', 'error');
             }
-        } catch (e) {
-            console.error('[HH3D Hoang Vực] ❌ Lỗi mạng:', e);
-            showNotification('Lỗi mạng khi thực hiện Hoang Vực.', 'error');
         }
     }
 
-    // Hàm phụ để nhận thưởng Hoang Vực
-    async function claimHoangVucRewards(nonce) {
-        const adminAjaxUrl = weburl + 'wp-admin/admin-ajax.php';
-        const headers = {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-        };
-        const payloadClaim = new URLSearchParams();
-        payloadClaim.append('action', 'claim_chest');
-        payloadClaim.append('nonce', nonce);
 
-        console.log('[HH3D Hoang Vực] 🎁 Đang nhận thưởng...');
-        const claimResponse = await fetch(adminAjaxUrl, {
-            method: 'POST',
-            headers: headers,
-            body: payloadClaim,
-            credentials: 'include'
-        });
-        const claimData = await claimResponse.json();
-
-        if (claimData.success) {
-            const rewards = claimData.total_rewards;
-            const message = `✅ Nhận thưởng thành công: +${rewards.tinh_thach} Tinh Thạch, +${rewards.tu_vi} Tu Vi.`;
-            console.log(message);
-            showNotification(message, 'success');
-        } else {
-            console.error('[HH3D Hoang Vực] ❌ Lỗi khi nhận thưởng:', claimData.message || 'Lỗi không xác định.');
-            showNotification(claimData.message || 'Lỗi khi nhận thưởng.', 'error');
-        }
-    }
-
-    // Hàm phụ để tấn công Hoang Vực
-    async function attackHoangVucBoss(bossId, nonce, url, headers) {
-        const currentTime = Date.now();
-        const randomString = Math.random().toString(36).substring(2, 8);
-        const requestId = `req_${randomString}${currentTime}`;
-        
-        console.log('[HH3D Hoang Vực] ⚔️ Đã đủ thời gian, đang tấn công boss...');
-        const payloadAttack = new URLSearchParams();
-        payloadAttack.append('action', 'attack_boss');
-        payloadAttack.append('boss_id', bossId);
-        payloadAttack.append('nonce', nonce);
-        payloadAttack.append('request_id', requestId);
-
-        const attackResponse = await fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: payloadAttack,
-            credentials: 'include'
-        });
-        const attackData = await attackResponse.json();
-        
-        if (attackData.success) {
-            const message = `✅ Tấn công thành công! Gây ${attackData.damage} sát thương.`;
-            console.log(message);
-            showNotification(message, 'success');
-        } else {
-            const errorMessage = attackData.message || 'Lỗi không xác định khi tấn công.';
-            console.error(`[HH3D Hoang Vực] ❌ Lỗi tấn công:`, errorMessage);
-            showNotification(errorMessage, 'error');
-        }
-    }
-
-    async function checkAndChangeElement(nonce, url, headers) {
-        const payloadCheckChange = new URLSearchParams();
-        payloadCheckChange.append('action', 'check_free_change_status');
-        payloadCheckChange.append('nonce', nonce);
-
-        const checkChangeResponse = await fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: payloadCheckChange,
-            credentials: 'include'
-        });
-        const changeStatus = await checkChangeResponse.json();
-
-        if (changeStatus.success && changeStatus.data.free_change) {
-            console.log('[HH3D Hoang Vực] ✅ Có lượt đổi nguyên tố miễn phí! Đang đổi...');
-            const payloadChange = new URLSearchParams();
-            payloadChange.append('action', 'change_user_element');
-            payloadChange.append('nonce', nonce);
-
-            const changeElementResponse = await fetch(url, {
-                method: 'POST',
-                headers: headers,
-                body: payloadChange,
-                credentials: 'include'
-            });
-            const changeElementData = await changeElementResponse.json();
-
-            if (changeElementData.success) {
-                console.log('[HH3D Hoang Vực] ✅ Đổi nguyên tố thành công.');
-                showNotification('Đã đổi nguyên tố miễn phí thành công!', 'success');
-                // Cập nhật lại nguyên tố của mình sau khi đổi thành công
-                window.HoangVucConfig.myElement = changeElementData.data.new_element;
-            } else {
-                console.error('[HH3D Hoang Vực] ❌ Lỗi khi đổi nguyên tố:', changeElementData.message || 'Lỗi không xác định.');
-                showNotification('Lỗi khi đổi nguyên tố Hoang Vực.', 'error');
-            }
-        } else {
-            console.log('[HH3D Hoang Vực] ⏳ Không có lượt đổi nguyên tố miễn phí.');
-        }
-    }
-
-// Hàm xác định nguyên tố tối ưu dựa trên boss và chiến lược
-    function getTargetElement(bossElement, maximizeDamage) {
-        const rules = {
-            'hoa': { khắc: 'thuy', bị_khắc: 'thuy' },
-            'kim': { khắc: 'hoa', bị_khắc: 'thuy' },
-            'thuy': { khắc: 'tho', bị_khắc: 'moc' },
-            'moc': { khắc: 'kim', bị_khắc: 'kim' },
-            'tho': { khắc: 'moc', bị_khắc: 'hoa' },
-        };
-
-        if (maximizeDamage) {
-            // Tối đa hóa sát thương: chọn nguyên tố khắc chế boss
-            for (const myElement in rules) {
-                if (rules[myElement].khắc === bossElement) {
-                    return myElement;
-                }
-            }
-        } else {
-            // Giảm sát thương: chọn nguyên tố không bị boss khắc chế
-            for (const myElement in rules) {
-                if (rules[myElement].bị_khắc !== bossElement) {
-                    return myElement;
-                }
-            }
-        }
-        return window.HoangVucConfig.myElement; // Trả về nguyên tố hiện tại nếu không tìm thấy
-}
 
 
     // ===============================================
@@ -1095,6 +1147,8 @@
             console.log(`${logPrefix} ✅ SUCCESS: ${message}`);
         } else if (type === 'warn') {
             console.warn(`${logPrefix} ⚠️ WARN: ${message}`);
+        } else if (type === 'info') {
+            console.info(`${logPrefix} ℹ️ INFO: ${message}`);
         } else {
             console.error(`${logPrefix} ❌ ERROR: ${message}`);
         }
@@ -1186,65 +1240,59 @@
     }
 
     //Hàm tạo menu hoang vực
+    const hoangvuc = new HoangVuc();
     function createHoangVucMenu(parentGroup) {
-
-        // --- Nút chính "Hoang Vực" ---
-        const hoangVucButton = document.createElement('button');
-        hoangVucButton.textContent = 'Hoang Vực';
-        hoangVucButton.classList.add('custom-script-hoang-vuc-btn');
-        hoangVucButton.addEventListener('click', async () => {
-            console.log('[HH3D Hoang Vực] 🖱️ Nút Hoang vực vừa được nhấn');
-            // Đọc giá trị boolean, mặc định là false nếu chưa được cài đặt
-            const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
-            console.log(`[HH3D Hoang Vực] Chế độ Tối đa hoá sát thương: ${maximizeDamage ? 'Bật' : 'Tắt'}`);
-
-            hoangVucButton.disabled = true;
-            hoangVucButton.textContent = 'Đang xử lý...';
-            
-            // Truyền thẳng giá trị boolean vào hàm xử lý
-            await doHoangVuc(maximizeDamage);
-            
-            hoangVucButton.disabled = false;
+            // --- Nút chính "Hoang Vực" ---
+            const hoangVucButton = document.createElement('button');
             hoangVucButton.textContent = 'Hoang Vực';
-        });
+            hoangVucButton.classList.add('custom-script-hoang-vuc-btn');
+            hoangVucButton.addEventListener('click', async () => {
+                console.log('[HH3D Hoang Vực] 🖱️ Nút Hoang vực vừa được nhấn');
+                const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
+                console.log(`[HH3D Hoang Vực] Chế độ Tối đa hoá sát thương: ${maximizeDamage ? 'Bật' : 'Tắt'}`);
 
-        // --- Nút cài đặt nhỏ ---
-        const settingsButton = document.createElement('button');
-        settingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
+                hoangVucButton.disabled = true;
+                hoangVucButton.textContent = 'Đang xử lý...';
+                
+                // Gọi phương thức qua instance của class
+                await hoangvuc.doHoangVuc(maximizeDamage); // <--- SỬA Ở ĐÂY
+                
+                hoangVucButton.disabled = false;
+                hoangVucButton.textContent = 'Hoang Vực';
+            });
 
-        // Hàm để cập nhật icon và tooltip dựa trên giá trị boolean
-        const updateSettingsIcon = () => {
-            const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
-            if (maximizeDamage) {
-                settingsButton.textContent = '↑';
-                settingsButton.title = 'Tối đa hoá sát thương: Bật';
-            } else {
-                settingsButton.textContent = '-';
-                settingsButton.title = 'Tối đa hoá sát thương: Tắt';
-            }
-        };
+            // --- Nút cài đặt nhỏ ---
+            const settingsButton = document.createElement('button');
+            settingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
 
-        // Gán sự kiện click cho nút cài đặt
-        settingsButton.addEventListener('click', () => {
-            let maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true'; // Đọc giá trị boolean từ localStorage
-            const newSetting = !maximizeDamage; // Đảo ngược giá trị
-            localStorage.setItem('hoangvucMaximizeDamage', newSetting); // Lưu giá trị mới vào localStorage
-            if (newSetting) {
-                showNotification('[Hoang vực] Đổi ngũ hành để tối đa hoá sát thương', 'info');
-            } else {
-                showNotification('[Hoang vực] Đổi ngũ hành để không bị giảm sát thương', 'info');
-            }
-            updateSettingsIcon(); // Cập nhật lại icon ngay lập tức
-        });
+            const updateSettingsIcon = () => {
+                const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
+                if (maximizeDamage) {
+                    settingsButton.textContent = '↑';
+                    settingsButton.title = 'Tối đa hoá sát thương: Bật';
+                } else {
+                    settingsButton.textContent = '-';
+                    settingsButton.title = 'Tối đa hoá sát thương: Tắt';
+                }
+            };
 
-        // Thêm cả hai nút vào group cha
-        parentGroup.appendChild(settingsButton);
-        parentGroup.appendChild(hoangVucButton);
-        
+            settingsButton.addEventListener('click', () => {
+                let maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
+                const newSetting = !maximizeDamage;
+                localStorage.setItem('hoangvucMaximizeDamage', newSetting);
+                if (newSetting) {
+                    showNotification('[Hoang vực] Đổi ngũ hành để tối đa hoá sát thương', 'info');
+                } else {
+                    showNotification('[Hoang vực] Đổi ngũ hành để không bị giảm sát thương', 'info');
+                }
+                updateSettingsIcon();
+            });
 
-        // Cài đặt icon ban đầu khi menu được tạo
-        updateSettingsIcon();
-    }
+            parentGroup.appendChild(settingsButton);
+            parentGroup.appendChild(hoangVucButton);
+            
+            updateSettingsIcon();
+        }
 
     // Hàm tạo nút menu tùy chỉnh
     function createCustomMenuButton() {

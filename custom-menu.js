@@ -489,7 +489,8 @@
         if (stonesToBet.length > 0) {
             for (const stone of stonesToBet) {
                 console.log(`[HH3D Đổ Thạch] 🪙 Chuẩn bị đặt cược ${betAmount} Tiên Ngọc vào đá "${stone.name}" (ID: ${stone.stone_id})...`);
-                await placeBet(stone, betAmount);
+                const placeBetSecurity = getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'place_do_thach_bet',\s*security: '([a-f0-9]+)'/);
+                await placeBet(stone, betAmount, placeBetSecurity);
             }
         } else {
             console.log('[HH3D Đổ Thạch] ⚠️ Không có đá nào được chọn để đặt cược.');
@@ -502,15 +503,15 @@
      * @param {number} betAmount - Số tiền (Tiên Ngọc) muốn đặt cược.
      * @returns {Promise<boolean>} True nếu đặt cược thành công, ngược lại là False.
      */
-    async function placeBet(stone, betAmount) {
+    async function placeBet(stone, betAmount, placeBetSecurity) {
         console.log(`[HH3D Đặt Cược] 🪙 Đang tiến hành đặt cược ${betAmount} Tiên Ngọc vào ${stone.name}...`);
         
         const url = ajaxUrl;
         const payload = new URLSearchParams();
-        const security = getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'place_do_thach_bet',\s*security: '([a-f0-9]+)'/);
+        
         payload.append('action', 'place_do_thach_bet');
-        payload.append('security', security);
-        payload.append('stone_id', stone.stoneId);
+        payload.append('security', placeBetSecurity);
+        payload.append('stone_id', stone.stone_id);
         payload.append('bet_amount', betAmount);
 
         const headers = {

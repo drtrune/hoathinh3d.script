@@ -1156,20 +1156,50 @@
         /**
          * Gửi yêu cầu khiêu chiến đến một người chơi cụ thể.
          */
-        async sendChallenge(userId, nonce) {
-            const endpoint = 'wp-json/luan-vo/v1/send-challenge';
-            const body = { user_id: userId };
-            const result = await this.sendApiRequest(endpoint, 'POST', nonce, body);
-            
-            if (result && result.success) {
-                console.log(`${this.logPrefix} 🎉 Gửi khiêu chiến đến người chơi ID ${userId} thành công.`);
-                return true;
+    async sendChallenge(userId, nonce) {
+        console.log(`${this.logPrefix} 🎯 Đang gửi khiêu chiến đến người chơi ID: ${userId}...`);
+
+        const sendEndpoint = 'wp-json/luan-vo/v1/send-challenge';
+        const sendBody = { target_user_id: userId };
+        const sendResult = await this.sendApiRequest(sendEndpoint, 'POST', nonce, sendBody);
+
+        if (sendResult && sendResult.success) {
+            console.log(`${this.logPrefix} 🎉 Gửi khiêu chiến thành công! Challenge ID: ${sendResult.data.challenge_id}`);
+
+            // Bước mới: Kiểm tra nếu đối thủ bật auto_accept
+            if (sendResult.data.auto_accept) {
+                console.log(`${this.logPrefix} ✨ Đối thủ tự động chấp nhận, đang hoàn tất trận đấu...`);
+                
+                const approveEndpoint = 'wp-json/luan-vo/v1/auto-approve-challenge';
+                const approveBody = {
+                    challenge_id: sendResult.data.challenge_id,
+                    target_user_id: userId
+                };
+
+                const approveResult = await this.sendApiRequest(approveEndpoint, 'POST', nonce, approveBody);
+
+                if (approveResult && approveResult.success) {
+                    console.log(`${this.logPrefix} ✅ Trận đấu đã hoàn tất. Bạn đã thắng!`);
+                    showNotification(`🎉 Đã đánh bại người chơi ID ${userId}!`, 'success');
+                    return true;
+                } else {
+                    const message = approveResult?.data?.message || 'Lỗi không xác định khi hoàn tất trận đấu.';
+                    console.error(`${this.logPrefix} ❌ Hoàn tất trận đấu thất bại: ${message}`);
+                    showNotification(`❌ Lỗi hoàn tất trận đấu: ${message}`, 'error');
+                    return false;
+                }
             } else {
-                const message = result?.data?.message || 'Lỗi không xác định.';
-                console.error(`${this.logPrefix} ❌ Gửi khiêu chiến thất bại: ${message}`);
-                return false;
+                console.log(`${this.logPrefix} ✅ Gửi khiêu chiến thành công, đối thủ không bật tự động chấp nhận.`);
+                showNotification(`✅ Đã gửi khiêu chiến đến ${userId}! Đang chờ đối thủ chấp nhận.`, 'success');
+                return true;
             }
+        } else {
+            const message = sendResult?.data?.message || 'Lỗi không xác định.';
+            console.error(`${this.logPrefix} ❌ Gửi khiêu chiến thất bại: ${message}`);
+            showNotification(`❌ Gửi khiêu chiến thất bại: ${message}`, 'error');
+            return false;
         }
+    }
 
         /**
          * Hiện hộp thoại và chuyển hướng đến trang Luận Võ trên tab hiện tại.

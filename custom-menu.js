@@ -507,9 +507,9 @@
         
         const url = ajaxUrl;
         const payload = new URLSearchParams();
-        const securityNonce = getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'place_do_thach_bet',\s*security: '([a-f0-9]+)'/);
+        const security = getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'place_do_thach_bet',\s*security: '([a-f0-9]+)'/);
         payload.append('action', 'place_do_thach_bet');
-        payload.append('security', securityNonce);
+        payload.append('security', security);
         payload.append('stone_id', stone.stoneId);
         payload.append('bet_amount', betAmount);
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.2
+// @version       2.3
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -13,7 +13,7 @@
     'use strict';
 
     console.log('%c[HH3D Script] Tải thành công. Đang khởi tạo UI tùy chỉnh.', 'background: #222; color: #bada55; padding: 2px 5px; border-radius: 3px;');
-
+ 
     // ===============================================
     // HÀM TIỆN ÍCH CHUNG
     // ===============================================
@@ -83,6 +83,143 @@
         }
         return null;
     }
+    // Lấy ID tài khoản
+    function getAccountId() {
+        if (typeof Better_Messages !== 'undefined' && Better_Messages.user_id) {
+            return Better_Messages.user_id;
+        }
+        return null;
+    }
+    // Lưu trữ trạng thái các hoạt động đã thực hiện
+    class TaskTracker {
+        constructor(storageKey = 'dailyTasks') {
+            this.storageKey = storageKey;
+            this.data = this.loadData();
+        }
+
+        // Tải dữ liệu từ localStorage
+        loadData() {
+            const storedData = localStorage.getItem(this.storageKey);
+            return storedData ? JSON.parse(storedData) : {};
+        }
+
+        // Lưu dữ liệu vào localStorage
+        saveData() {
+            localStorage.setItem(this.storageKey, JSON.stringify(this.data));
+        }
+
+        /** Lấy thông tin của một tài khoản cụ thể và tự động cập nhật nếu sang ngày mới
+            * @param {string} accountId - ID của tài khoản.
+            * @return {object} Trả về dữ liệu tài khoản, bao gồm các nhiệm vụ và trạng thái.
+            * Nếu tài khoản chưa có dữ liệu, nó sẽ tự động tạo mới và lưu vào localStorage.
+            * Nếu ngày hôm nay đã được cập nhật, nó sẽ reset các nhiệm vụ cho ngày mới.
+            * Nếu đã đến giờ chuyển sang lượt 2 của Đổ Thạch, nó sẽ tự động chuyển trạng thái.
+        */
+        getAccountData(accountId) {
+            if (!this.data[accountId]) {
+                this.data[accountId] = {};
+                this.saveData();
+            }
+
+            const accountData = this.data[accountId];
+            const today = new Date().toDateString();
+
+            if (accountData.lastUpdatedDate !== today) {
+                console.log(`[TaskTracker] Cập nhật dữ liệu ngày mới cho tài khoản: ${accountId}`);
+
+                accountData.lastUpdatedDate = today;
+                accountData.diemdanh = { date: today, done: false };
+                accountData.thiluyen = { date: today, done: false, nextTime: null };
+                accountData.bicanh = { date: today, done: false, nextTime: null };
+                accountData.phucloi = { date: today, done: false, nextTime: null };
+                accountData.hoangvuc = { date: today, done: false, nextTime: null };
+                accountData.dothach = {
+                    betplaced: false,
+                    reward_claimed: false,
+                    turn: 1,
+                };
+                this.saveData();
+            }
+
+            const currentTime = new Date();
+            if (accountData.dothach.turn === 1 && currentTime.getHours() >= 16) {
+                accountData.dothach = {
+                    betplaced: false,
+                    reward_claimed: false,
+                    turn: 2,
+                };
+                this.saveData();
+            }
+            return accountData;
+        }
+
+        /**
+         * Thêm một nhiệm vụ mới hoặc cập nhật nhiệm vụ hiện tại
+         * @param {string} accountId - ID của tài khoản.
+         * @param {string} taskName - Tên nhiệm vụ: 'diemdanh', 'thiluyen', 'bicanh', 'phucloi', 'hoangvuc', 'dothach'.
+         * @param {object} newData - Dữ liệu nhiệm vụ mới hoặc cập nhật.
+         * @return {void}
+         */
+        updateTask(accountId, taskName, newData) {
+            const accountData = this.getAccountData(accountId);
+            if (accountData[taskName]) {
+                Object.assign(accountData[taskName], newData);
+                this.saveData();
+            } else {
+                console.error(`[TaskTracker] Nhiệm vụ "${taskName}" không tồn tại cho tài khoản "${accountId}"`);
+            }
+        }
+
+        // Lấy trạng thái của một nhiệm vụ
+        getTaskStatus(accountId, taskName) {
+            const accountData = this.getAccountData(accountId);
+            return accountData[taskName] || null;
+        }
+
+        /**
+         * Kiểm tra xem một nhiệm vụ đã hoàn thành hay chưa
+         * @param {string} accountId - ID của tài khoản.
+         * @param {string} taskName - Tên nhiệm vụ: 'diemdanh', 'thiluyen', 'bicanh', 'phucloi', 'hoangvuc'.
+         * @return {boolean} Trả về `true` nếu nhiệm vụ đã hoàn thành, ngược lại là `false`.
+         */
+        isTaskDone(accountId, taskName) {
+            const accountData = this.getAccountData(accountId);
+            return accountData[taskName] && accountData[taskName].done;
+        }
+
+        /**
+         * Đánh dấu một nhiệm vụ là đã hoàn thành
+         * @param {string} accountId - ID của tài khoản.
+         * @param {string} taskName - Tên nhiệm vụ: 'diemdanh', 'thiluyen', 'bicanh', 'phucloi', 'hoangvuc'.
+         * @return {void}
+         */
+        markTaskDone(accountId, taskName) {
+            const accountData = this.getAccountData(accountId);
+            if (accountData[taskName]) {
+                accountData[taskName].done = true;
+                this.saveData();
+            } else {
+                console.error(`[TaskTracker] Nhiệm vụ "${taskName}" không tồn tại cho tài khoản "${accountId}"`);
+            }
+        }
+
+        /**
+         * Điều chỉnh thời gian của một nhiệm vụ
+         * @param {string} accountId - ID của tài khoản.
+         * @param {string} taskName - Tên nhiệm vụ: 'thiluyen', 'bicanh', 'phucloi', 'hoangvuc'.
+         * @param {string} newTime - Thời gian mới theo định dạng `HH:mm:ss`.
+         * @return {void}
+         */
+        adjustTaskTime(accountId, taskName, newTime) {
+            const accountData = this.getAccountData(accountId);
+            if (accountData[taskName]) {
+                accountData[taskName].nextTime = newTime;
+                this.saveData();
+            } else {
+                console.error(`[TaskTracker] Nhiệm vụ "${taskName}" không tồn tại cho tài khoản "${accountId}"`);
+            }
+        }
+    }
 
     /**
      * Lấy security nonce một cách chung chung từ một URL.
@@ -120,7 +257,7 @@
 
 
     // ===============================================
-    // HÀM VẤN ĐÁP
+    // VẤN ĐÁP
     // ===============================================
 
     // Hàm tải đáp án từ GitHub
@@ -244,6 +381,7 @@
 
                 if (dataQuiz.data.completed) {
                     showNotification('Đã hoàn thành vấn đáp hôm nay.', 'success');
+                    taskTracker.markTaskDone(accountId, 'diemdanh');
                     return;
                 }
 
@@ -284,7 +422,7 @@
     }
 
     // ===============================================
-    // Hàm điểm danh hàng ngày
+    // ĐIỂM DANH
     // ===============================================
     async function doDailyCheckin(nonce) {
         try {
@@ -317,7 +455,7 @@
     }
 
     // ===============================================
-    // Hàm tế lễ
+    // TẾ LỄ TÔNG MÔN
     // ===============================================
     async function doClanDailyCheckin(nonce) {
         try {
@@ -686,6 +824,7 @@
                 if (time === '00:00') {
                     if (chest_level >= 4) {
                         showNotification('Phúc Lợi Đường đã hoàn tất hôm nay!', 'success');
+                        taskTracker.markTaskDone(accountId, 'phucloi');
                         return;
                     }
 
@@ -728,66 +867,152 @@
     // ===============================================
     // BÍ CẢNH
     // ===============================================
-    async function doBiCanh() {
-        console.log('[HH3D Bí Cảnh] ▶️ Bắt đầu nhiệm vụ Bí Cảnh Tông Môn.');
-
-        // Bước 1: Tải trang và lấy nonce.
-        // getSecurityNonce cần là một hàm async và bạn cần await kết quả của nó.
-        const nonce = await getSecurityNonce(weburl + 'bi-canh-tong-mon', /"nonce":"([a-f0-9]+)"/);
-        if (!nonce) {
-            showNotification('Lỗi: Không thể lấy nonce cho Bí Cảnh Tông Môn.', 'error');
-            return;
+    class BiCanh {
+        constructor(weburl) {
+            this.weburl = weburl;
+            this.logPrefix = '[HH3D Bí Cảnh]';
+            this.showNotification = showNotification; // Hàm thông báo từ bên ngoài
         }
 
-        const headers = {
-            'Accept': '*/*',
-            'Accept-Language': 'vi,en-US;q=0.5',
-            'Content-Type': 'application/json',
-            'X-WP-Nonce': nonce,
-            'X-Requested-With': 'XMLHttpRequest',
-        };
+        /**
+         * Phương thức chính để thực hiện toàn bộ nhiệm vụ Bí Cảnh.
+         */
+        async doBiCanh() {
+            console.log(`${this.logPrefix} ▶️ Bắt đầu nhiệm vụ Bí Cảnh Tông Môn.`);
 
-        const requestOptions = {
-            method: 'POST',
-            headers: headers,
-            body: '{}',
-            credentials: 'include'
-        };
-
-        // Bước 2: Kiểm tra cooldown
-        console.log('[HH3D Bí Cảnh] ⏲️ Đang kiểm tra thời gian hồi chiêu...');
-        const checkCooldownUrl = weburl+ 'wp-json/tong-mon/v1/check-attack-cooldown';
-        
-        try {
-            const cooldownResponse = await fetch(checkCooldownUrl, requestOptions);
-            const cooldownData = await cooldownResponse.json();
-
-            if (cooldownData.success && cooldownData.can_attack) {
-                // Bước 3: Nếu có thể tấn công, tiến hành tấn công boss
-                console.log('[HH3D Bí Cảnh] ✅ Có thể tấn công! Đang khiêu chiến...');
-                const attackBossUrl = weburl+ 'wp-json/tong-mon/v1/attack-boss';
-                
-                const attackResponse = await fetch(attackBossUrl, requestOptions);
-                const attackData = await attackResponse.json();
-
-                if (attackData.success) {
-                    const message = attackData.message || `Gây ${attackData.damage} sát thương.`;
-                    console.log(`[HH3D Bí Cảnh] ✅ ${message}`);
-                    showNotification(message, 'success');
-                } else {
-                    const errorMessage = attackData.message || 'Lỗi không xác định khi tấn công.';
-                    console.error(`[HH3D Bí Cảnh] ❌ Lỗi tấn công:`, errorMessage);
-                    showNotification(errorMessage, 'error');
-                }
-            } else {
-                // Nếu đang trong thời gian cooldown hoặc không thể tấn công
-                const message = cooldownData.message || 'Không thể tấn công vào lúc này.';
-                console.log(`[HH3D Bí Cảnh] ⏳ ${message}`);
-                showNotification(message, 'info');
+            // Bước 1: Lấy Nonce bảo mật
+            const nonce = await this.getNonce();
+            if (!nonce) {
+                this.showNotification('Lỗi: Không thể lấy nonce cho Bí Cảnh Tông Môn.', 'error');
+                return;
             }
-        } catch (e) {
-            console.error('[HH3D Bí Cảnh] ❌ Lỗi mạng:', e);
-            showNotification('Lỗi mạng khi thực hiện Bí Cảnh Tông Môn.', 'error');
+
+            // Bước 2: Kiểm tra thời gian hồi chiêu
+            const canAttack = await this.checkAttackCooldown(nonce);
+            if (!canAttack) {
+                this.showNotification('⏳ Đang trong thời gian hồi chiêu. Vui lòng thử lại sau.', 'info');
+                return;
+            }
+
+            // Bước 3: Tấn công boss Bí Cảnh
+            await this.attackBoss(nonce);
+        }
+
+        /**
+         * Lấy nonce từ trang Bí Cảnh Tông Môn.
+         * @returns {Promise<string|null>} Nonce bảo mật hoặc null nếu lỗi.
+         */
+        async getNonce() {
+            const nonce = await getSecurityNonce(weburl + 'bi-canh-tong-mon', /"nonce":"([a-f0-9]+)"/);
+            if (nonce) {
+                return nonce;
+            } else {
+                return null;
+            }
+        }
+
+        /**
+         * Kiểm tra xem có thể tấn công boss Bí Cảnh hay không.
+         * @param {string} nonce - Nonce bảo mật.
+         * @returns {Promise<boolean>} True nếu có thể tấn công, ngược lại là false.
+         */
+        async checkAttackCooldown(nonce) {
+            console.log(`${this.logPrefix} ⏲️ Đang kiểm tra thời gian hồi chiêu...`);
+            const endpoint = 'wp-json/tong-mon/v1/check-attack-cooldown';
+
+            try {
+                const response = await this.sendApiRequest(endpoint, 'POST', nonce, {});
+                if (response && response.success && response.can_attack) {
+                    console.log(`${this.logPrefix} ✅ Có thể tấn công.`);
+                    return true;
+                } else {
+                    const message = response?.message || 'Không thể tấn công vào lúc này.';
+                    console.log(`${this.logPrefix} ⏳ ${message}`);
+                    this.showNotification(`⏳ ${message}`, 'info');
+                    return false;
+                }
+            } catch (e) {
+                console.error(`${this.logPrefix} ❌ Lỗi kiểm tra cooldown:`, e);
+                return false;
+            }
+        }
+
+        /**
+         * Gửi yêu cầu tấn công boss Bí Cảnh.
+         * @param {string} nonce - Nonce bảo mật.
+         */
+        async attackBoss(nonce) {
+            console.log(`${this.logPrefix} 🔥 Đang khiêu chiến boss...`);
+            const endpoint = 'wp-json/tong-mon/v1/attack-boss';
+
+            try {
+                const response = await this.sendApiRequest(endpoint, 'POST', nonce, {});
+                if (response && response.success) {
+                    const message = response.message || `Gây ${response.damage} sát thương.`;
+                    console.log(`${this.logPrefix} ✅ ${message}`);
+                    this.showNotification(message, 'success');
+                } else {
+                    const errorMessage = response?.message || 'Lỗi không xác định khi tấn công.';
+                    console.error(`${this.logPrefix} ❌ Lỗi tấn công:`, errorMessage);
+                    this.showNotification(errorMessage, 'error');
+                }
+            } catch (e) {
+                console.error(`${this.logPrefix} ❌ Lỗi tấn công:`, e);
+                this.showNotification('Lỗi mạng khi tấn công boss Bí Cảnh.', 'error');
+            }
+        }
+
+
+        /**  Kiểm tra xem có đạt giới hạn tấn công hàng ngày hay không.
+         * @returns {Promise<boolean>} True nếu đạt giới hạn, ngược lại là false.
+         * */
+        async  isDailyLimit() {
+            const endpoint = 'wp-json/tong-mon/v1/check-attack-cooldown';
+            const nonce = await this.getNonce();
+            if (!nonce) {
+                return false;
+            }
+            try {
+                const response = await this.sendApiRequest(endpoint, 'POST', nonce, {});
+                if (response && response.success && response.cooldown_type	=== 'daily_limit' ) {
+                    return true;
+                } else {
+                    return false;
+                }
+            } catch (e) {
+                console.error(`${this.logPrefix} ❌ Lỗi kiểm tra cooldown:`, e);
+                return false;
+            }
+        }
+        /**
+         * Hàm trợ giúp để gửi yêu cầu API.
+         * @param {string} endpoint - Điểm cuối API.
+         * @param {string} method - HTTP method (GET, POST).
+         * @param {string} nonce - Nonce bảo mật.
+         * @param {object} body - Dữ liệu body.
+         * @returns {Promise<object|null>} Phản hồi từ API.
+         */
+        async sendApiRequest(endpoint, method, nonce, body = {}) {
+            try {
+                const url = `${this.weburl}${endpoint}`;
+                const headers = { 
+                    "Content-Type": "application/json", 
+                    "X-WP-Nonce": nonce,
+                    "Accept": "*/*",
+                    "Accept-Language": "vi,en-US;q=0.5",
+                    "X-Requested-With": "XMLHttpRequest",
+                };
+                const response = await fetch(url, {
+                    method,
+                    headers,
+                    body: JSON.stringify(body),
+                    credentials: 'include'
+                });
+                return await response.json();
+            } catch (error) {
+                console.error(`${this.logPrefix} ❌ Lỗi khi gửi yêu cầu tới ${endpoint}:`, error);
+                throw error;
+            }
         }
     }
 
@@ -907,12 +1132,9 @@
             });
             const data = await response.json();
             if (data.success) {
-                const message = `✅ Tấn công boss hoang vực thành công`;
-                console.log(message);
-                showNotification(message, 'success');
+                showNotification('✅ Tấn công boss hoang vực hành công', 'success');
             } else {
-                const errorMessage = data.message || 'Lỗi không xác định khi tấn công.';
-                console.error(`${this.logPrefix} ❌ Lỗi tấn công:`, errorMessage);
+                const errorMessage = data.data.error || 'Lỗi không xác định khi tấn công.';
                 showNotification(errorMessage, 'error');
             }
         }
@@ -1536,7 +1758,7 @@
         luanVoSettingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
 
         // Khởi tạo giá trị mặc định nếu chưa có
-        // Sử dụng '1' và '0' để biểu thị trạng thái BẬT/TẮT, đơn giản hơn so với 'true'/'false'.
+        // Sử dụng '1' và '0' để biểu thị trạng thái BẬT/TẮT.
         if (localStorage.getItem('luanVoAutoChallenge') === null) {
             localStorage.setItem('luanVoAutoChallenge', '1'); 
         }
@@ -1589,7 +1811,7 @@
     }
     
     
-                // Hàm tạo nút menu tùy chỉnh
+    // Hàm tạo nút menu tùy chỉnh
     function createCustomMenuButton() {
     addStyle(`
             /* Kiểu chung cho toàn bộ menu */
@@ -1790,11 +2012,20 @@
                                     await doDailyCheckin(nonce);
                                     await doClanDailyCheckin(nonce);
                                     await doVanDap(nonce)
-                                    autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
-                                    autoTaskButton.disabled = false;
                                     console.log('[HH3D Script] ✅ Tất cả nhiệm vụ đã hoàn thành.');
+                                    if (taskTracker.isTaskDone(accountId, 'diemdanh')) {
+                                    autoTaskButton.disabled = true;
+                                    autoTaskButton.textContent = 'Đã hoàn thành Điểm danh - Tế lễ - Vấn đáp';
+                                    } else {
+                                        autoTaskButton.disabled = false;
+                                        autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
+                                    }
                                 });
                                 groupDiv.appendChild(autoTaskButton);
+                                if (taskTracker.isTaskDone(accountId, 'diemdanh')) {
+                                    autoTaskButton.disabled = true;
+                                    autoTaskButton.textContent = 'Đã hoàn thành Điểm danh - Tế lễ - Vấn đáp';
+                                }
                             } else if (link.isDiceRoll) {
                                 groupDiv.className = 'custom-script-menu-group-dice-roll';
                                 createDiceRollMenu(groupDiv);
@@ -1822,25 +2053,40 @@
                                     phucLoiButton.disabled = true;
                                     phucLoiButton.textContent = 'Đang xử lý...';
                                     await doPhucLoiDuong();
-                                    phucLoiButton.textContent = 'Phúc Lợi';
-                                    phucLoiButton.disabled = false;
+                                    if (taskTracker.isTaskDone(accountId, 'phucloi')) {
+                                        phucLoiButton.disabled = true;
+                                        phucLoiButton.textContent = 'Phúc Lợi ✅';
+                                    } else {
+                                        phucLoiButton.textContent = 'Phúc Lợi';
+                                        phucLoiButton.disabled = false;
+                                    }
                                     console.log('[HH3D Script] ✅ Phúc Lợi đã hoàn thành.');
                                 });
                                 groupDiv.appendChild(phucLoiButton);
+                                if (taskTracker.isTaskDone(accountId, 'phucloi')) {
+                                        phucLoiButton.disabled = true;
+                                        phucLoiButton.textContent = 'Phúc Lợi ✅';
+                                    }
                             } else if (link.isBiCanh) {
                                 const biCanhButton = document.createElement('button');
                                 biCanhButton.textContent = link.text;
                                 biCanhButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
+                                const bicanh = new BiCanh();
                                 biCanhButton.addEventListener('click', async() => {
                                     console.log('[HH3D Script] 🖱️ Nút Bí Cảnh đã được nhấn');
                                     biCanhButton.disabled = true;
                                     biCanhButton.textContent = 'Đang xử lý...';
-                                    await doBiCanh();
+                                    await bicanh.doBiCanh();
                                     biCanhButton.textContent = 'Bí Cảnh';
                                     biCanhButton.disabled = false;
                                     console.log('[HH3D Script] ✅ Bí Cảnh đã hoàn thành.');
                                 });
                                 groupDiv.appendChild(biCanhButton);
+                                const biCanhLimit =  bicanh.isDailyLimit();
+                                if (biCanhLimit) {
+                                    biCanhButton.disabled = true;
+                                    biCanhButton.textContent = 'Bí Cảnh ✅';
+                                }
                             } else if (link.isHoangVuc) {
                                 groupDiv.className = 'custom-script-hoang-vuc-group';
                                 createHoangVucMenu(groupDiv);
@@ -1897,5 +2143,13 @@
     // ===============================================
     // KHỞI TẠO SCRIPT
     // ===============================================
+    const taskTracker = new TaskTracker();
+        const accountId = getAccountId();
+        if (accountId) {
+            let accountData = taskTracker.getAccountData(accountId)
+            console.log(`[HH3D Script] ✅ Đã lấy dữ liệu tài khoản: ${JSON.stringify(accountData)}`);
+        } else {
+            console.warn('[HH3D Script] ⚠️ Không thể lấy ID tài khoản. Một số tính năng có thể không hoạt động.');      
+        }
     createCustomMenuButton();
 })();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.0
+// @version       2.2
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -50,7 +50,7 @@
         name: 'Luận võ, Khoáng mạch',
         links: [{
             text: 'Luận Võ',
-            url: weburl + 'luan-vo-duong'
+            isLuanVo: true
         }, {
             text: 'Khoáng Mạch',
             url: weburl + 'khoang-mach'
@@ -728,12 +728,6 @@
     // ===============================================
     // BÍ CẢNH
     // ===============================================
-
-    // Lấy nonce từ biến toàn cục window.BossSystemConfig.
-
-    /**
- * Tự động thực hiện nhiệm vụ Bí Cảnh Tông Môn bằng cách tải trang để lấy nonce.
- */
     async function doBiCanh() {
         console.log('[HH3D Bí Cảnh] ▶️ Bắt đầu nhiệm vụ Bí Cảnh Tông Môn.');
 
@@ -1085,12 +1079,222 @@
         }
     }
 
+    // ===============================================
+    // LUẬN VÕ
+    // ===============================================
 
+    class LuanVo {
+        constructor() {
+            this.weburl = 'https://hoathinh3d.mx/';
+            this.logPrefix = '[HH3D Luận Võ]';
+        }
 
+        /**
+         * Hàm hỗ trợ: Gửi yêu cầu API chung.
+         */
+        async sendApiRequest(endpoint, method, nonce, body = {}) {
+            try {
+                const url = `${this.weburl}${endpoint}`;
+                const headers = { "Content-Type": "application/json", "X-WP-Nonce": nonce };
+                const response = await fetch(url, {
+                    method,
+                    headers,
+                    body: JSON.stringify(body),
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`${this.logPrefix} ❌ Lỗi khi gửi yêu cầu tới ${endpoint}:`, error);
+                return null;
+            }
+        }
+
+        /**
+         * Hàm hỗ trợ: Đợi một khoảng thời gian.
+         */
+        async delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        /**
+         * Đảm bảo tính năng tự động chấp nhận khiêu chiến được bật.
+         */
+        async ensureAutoAccept(nonce) {
+            const toggleEndpoint = 'wp-json/luan-vo/v1/toggle-auto-accept';
+            const result1 = await this.sendApiRequest(toggleEndpoint, 'POST', nonce, {});
+            if (!result1 || !result1.success) return false;
+
+            if (result1.message.includes('Đã bật')) return true;
+
+            const result2 = await this.sendApiRequest(toggleEndpoint, 'POST', nonce, {});
+            return result2 && result2.success && result2.message.includes('Đã bật');
+        }
+
+        /**
+         * Lấy danh sách người chơi đang bật tự động chấp nhận.
+         */
+        async getFollowingUsers(nonce) {
+            console.log(`${this.logPrefix} 🕵️ Đang lấy danh sách người theo dõi...`);
+            const endpoint = 'wp-json/luan-vo/v1/get-following-users';
+            const body = { page: 1 };
+            const data = await this.sendApiRequest(endpoint, 'POST', nonce, body);
+
+            if (data && data.success) {
+                console.log(`${this.logPrefix} ✅ Lấy danh sách thành công. Tìm thấy ${data.data.users.length} người dùng.`);
+                return data.data.users.filter(user => user.auto_accept === true);
+            } else {
+                const message = data?.message || 'Lỗi không xác định khi lấy danh sách người theo dõi.';
+                console.error(`${this.logPrefix} ❌ ${message}`);
+                return null;
+            }
+        }
+
+        /**
+         * Gửi yêu cầu khiêu chiến đến một người chơi cụ thể.
+         */
+        async sendChallenge(userId, nonce) {
+            const endpoint = 'wp-json/luan-vo/v1/send-challenge';
+            const body = { user_id: userId };
+            const result = await this.sendApiRequest(endpoint, 'POST', nonce, body);
+            
+            if (result && result.success) {
+                console.log(`${this.logPrefix} 🎉 Gửi khiêu chiến đến người chơi ID ${userId} thành công.`);
+                return true;
+            } else {
+                const message = result?.data?.message || 'Lỗi không xác định.';
+                console.error(`${this.logPrefix} ❌ Gửi khiêu chiến thất bại: ${message}`);
+                return false;
+            }
+        }
+
+        /**
+         * Hiện hộp thoại và chuyển hướng đến trang Luận Võ trên tab hiện tại.
+         */
+        async goToLuanVoPage() {
+            const luanVoUrl = `${weburl}/luan-vo-duong`;
+            
+            if (confirm("Bạn có muốn chuyển đến trang Luận Võ Đường không?")) {
+                window.location.href = luanVoUrl;
+            }
+        }
+        
+
+        /**
+         * Gửi yêu cầu nhận thưởng Luận Võ và xử lý phản hồi từ server.
+         * @param {string} nonce - Nonce bảo mật của phiên làm việc.
+         */
+        async receiveReward(nonce) {
+            console.log(`${this.logPrefix} 🎁 Đang gửi yêu cầu nhận thưởng...`);
+
+            const endpoint = 'wp-json/luan-vo/v1/receive-reward';
+            const body = {}; 
+
+            try {
+                const response = await fetch(`${this.weburl}${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-WP-Nonce": nonce
+                    },
+                    body: JSON.stringify(body),
+                    credentials: 'include'
+                });
+
+                const textResponse = await response.text();
+
+                try {
+                    const result = JSON.parse(textResponse);
+                    // Case 1: Nhận được phản hồi JSON
+                    if (result.success === false) {
+                        const message = result.message || 'Lỗi không xác định.';
+                        showNotification(message, 'error');
+                        return;
+                    }
+                } catch (e) {
+                    // Case 2: Không thể phân tích JSON (do response rỗng hoặc không phải JSON)
+                    // Điều này xảy ra khi trang web tự tải lại sau khi gửi yêu cầu.
+                    console.log(`${this.logPrefix} ✅ Lệnh nhận thưởng đã được gửi đi. Không có phản hồi JSON.`);
+                }
+                
+                // Nếu không có lỗi, coi như thành công.
+                showNotification('🎉 Đã nhận thưởng Luận Võ thành công!', 'success');
+
+            } catch (error) {
+                // Lỗi mạng hoặc lỗi khác
+                console.error(`${this.logPrefix} ❌ Lỗi khi gửi lệnh nhận thưởng:`, error);
+                showNotification(`❌ Lỗi khi gửi lệnh nhận thưởng: ${error.message}`, 'error');
+            }
+        }
+        /**
+         * Hàm chính: Chạy toàn bộ quy trình Luận Võ.
+         * @param {string} nonce - Nonce bảo mật.
+         * @param {function} getNonce - Hàm để lấy nonce từ trang web.
+         * @param {function} showNotification - Hàm để hiển thị thông báo.
+         */
+        async startLuanVo(autoChallenge) {
+            console.log(`${this.logPrefix} ▶️ Bắt đầu nhiệm vụ Luận Võ.`);
+            const nonce = await getNonce();
+            // Bước 1: Lấy nonce nếu chưa có
+            if (!nonce) {
+                showNotification('❌ Lỗi: Không thể lấy nonce cho Luận Võ.', 'error');
+                return;
+            }
+            
+            // Bước 2: Tham gia trận đấu
+            const joinResult = await this.sendApiRequest(
+                'wp-json/luan-vo/v1/join-battle', 'POST', nonce, {}
+            );
+            console.log(`${this.logPrefix} ✅ Tham gia trận đấu thành công.`);
+            
+            // Bước 3: Đảm bảo tự động chấp nhận khiêu chiến
+            const autoAcceptSuccess = await this.ensureAutoAccept(nonce);
+            if (!autoAcceptSuccess) {
+                showNotification('⚠️ Tham gia thành công nhưng không thể bật tự động chấp nhận.', 'warning');
+            } else {
+                console.log(`${this.logPrefix} ✅ Tự động chấp nhận đã được bật.`);
+            }
+
+            // Bước 4: Khiêu chiến người chơi
+            if (!autoChallenge) {
+                //Hiện hộp thoại thông báo để người chơi tới trang luận võ thủ công
+                this.goToLuanVoPage();
+                return;
+            }
+            let users = await this.getFollowingUsers(nonce);
+            if (!users || users.length === 0) {
+                showNotification('ℹ️ Không có người chơi phù hợp để khiêu chiến.', 'info');
+                return;
+            }
+            
+            let challengesSent = 0;
+            const maxChallenges = 5; // Có thể thay đổi
+            
+            for (const user of users) {
+                if (challengesSent >= maxChallenges) {
+                    break;
+                }
+                if (user.challenges_remaining > 0) {
+                    const challengeSuccess = await this.sendChallenge(user.id, nonce);
+                    if (challengeSuccess) {
+                        challengesSent++;
+                        await this.delay(5000); // Cách nhau 5 giây
+                    }
+                }
+            }
+            
+            showNotification(`✅ Hoàn thành! Đã gửi ${challengesSent} khiêu chiến.`, 'success');
+            // Bước 5: Nhận thưởng nếu có
+            const rewardResult = await this.receiveReward(nonce);
+        }
+    }
 
     // ===============================================
     // HÀM HIỂN THỊ THÔNG BÁO
-    // ===============================================
+    //  
     function showNotification(message, type = 'success', duration = 3000) {
 
         // --- Bắt đầu phần chèn CSS tự động ---
@@ -1293,8 +1497,69 @@
             
             updateSettingsIcon();
         }
+    
+    //Hàm tạo menu Luận Võ
+    const luanVo = new LuanVo();
+    function createLuanVoMenu(parentGroup) {
+        const luanVoButton = document.createElement('button');
+        const luanVoSettingsButton = document.createElement('button');
+        luanVoSettingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
 
-    // Hàm tạo nút menu tùy chỉnh
+        // Khởi tạo giá trị mặc định nếu chưa có
+        // Sử dụng '1' và '0' để biểu thị trạng thái BẬT/TẮT, đơn giản hơn so với 'true'/'false'.
+        if (localStorage.getItem('luanVoAutoChallenge') === null) {
+            localStorage.setItem('luanVoAutoChallenge', '1'); 
+        }
+
+        // Lấy giá trị ban đầu và chuyển thành boolean
+        let autoChallengeEnabled = localStorage.getItem('luanVoAutoChallenge') === '1';
+
+        // Cập nhật trạng thái hiển thị của nút
+        const updateButtonState = (isEnabled) => {
+            luanVoSettingsButton.textContent = isEnabled ? '✅' : '❌';
+            luanVoSettingsButton.title = isEnabled ? 'Tự động thực hiện Luận Võ: Bật' : 'Tự động thực hiện Luận Võ: Tắt';
+        };
+
+        updateButtonState(autoChallengeEnabled); // Cập nhật trạng thái ban đầu
+
+        parentGroup.appendChild(luanVoSettingsButton);
+
+        // Thêm sự kiện click cho nút cài đặt Luận Võ
+        luanVoSettingsButton.addEventListener('click', () => {
+            autoChallengeEnabled = !autoChallengeEnabled; // Đảo ngược trạng thái
+            localStorage.setItem('luanVoAutoChallenge', autoChallengeEnabled ? '1' : '0'); // Lưu lại vào localStorage
+            updateButtonState(autoChallengeEnabled); // Cập nhật giao diện
+            
+            const message = autoChallengeEnabled ? 'Tự động thực hiện Luận Võ đã được bật' : 'Tự động thực hiện Luận Võ đã được tắt';
+            showNotification(`[Luận Võ] ${message}`, 'info');
+            console.log(`[HH3D Luận Võ] Trạng thái tự động thực hiện Luận Võ: ${autoChallengeEnabled}`);
+        });
+
+        luanVoButton.textContent = 'Luận Võ';
+        luanVoButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
+        luanVoButton.addEventListener('click', async () => {
+            console.log('[HH3D Luận Võ] Nút Luận võ đã được nhấn');
+            luanVoButton.disabled = true;
+            luanVoButton.textContent = 'Đang xử lý...';
+
+            try {
+                // Lấy lại giá trị từ localStorage ngay trước khi gọi hàm, để đảm bảo chính xác
+                const currentAutoChallenge = localStorage.getItem('luanVoAutoChallenge') === '1';
+                await luanVo.startLuanVo(currentAutoChallenge);
+            } catch (error) {
+                console.error('[HH3D Luận Võ] ❌ Lỗi trong quá trình Luận Võ:', error);
+                showNotification('❌ Lỗi trong quá trình Luận Võ.', 'error');
+            } finally {
+                luanVoButton.disabled = false;
+                luanVoButton.textContent = 'Luận Võ';
+            }
+        });
+
+        parentGroup.appendChild(luanVoButton);
+    }
+    
+    
+                // Hàm tạo nút menu tùy chỉnh
     function createCustomMenuButton() {
     addStyle(`
             /* Kiểu chung cho toàn bộ menu */
@@ -1549,7 +1814,10 @@
                             } else if (link.isHoangVuc) {
                                 groupDiv.className = 'custom-script-hoang-vuc-group';
                                 createHoangVucMenu(groupDiv);
-                            }
+                            } else if (link.isLuanVo) {
+                                groupDiv.className = 'custom-script-hoang-vuc-group';
+                                createLuanVoMenu(groupDiv);
+                            } 
                             else {
                                 const menuItem = document.createElement('a');
                                 menuItem.classList.add('custom-script-menu-link');

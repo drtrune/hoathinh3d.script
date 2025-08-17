@@ -123,14 +123,14 @@
         */
         getAccountData(accountId) {
             if (!this.data[accountId]) {
-                // Khởi tạo dữ liệu mới nếu tài khoản chưa tồn tại
                 this.data[accountId] = {};
+                this.saveData();
             }
 
             const accountData = this.data[accountId];
             const today = new Date().toDateString();
 
-            // Định nghĩa cấu trúc mặc định cho tất cả các nhiệm vụ
+            // Danh sách tất cả nhiệm vụ mặc định
             const defaultTasks = {
                 diemdanh: { date: today, done: false },
                 thiluyen: { date: today, done: false, nextTime: null },
@@ -138,32 +138,28 @@
                 phucloi: { date: today, done: false, nextTime: null },
                 hoangvuc: { date: today, done: false, nextTime: null },
                 dothach: { betplaced: false, reward_claimed: false, turn: 1 },
-                luanvo: { date: today, done: false }, // Nhiệm vụ mới
-                // Thêm các nhiệm vụ khác ở đây
+                luanvo: { date: today, done: false } // bổ sung nhiệm vụ mới
             };
 
-            // Hợp nhất dữ liệu mặc định với dữ liệu hiện có
-            // Điều này sẽ thêm các nhiệm vụ mới vào dữ liệu hiện có mà không xóa dữ liệu cũ
-            Object.assign(accountData, defaultTasks);
-
-            // Reset dữ liệu nếu sang ngày mới
             if (accountData.lastUpdatedDate !== today) {
                 console.log(`[TaskTracker] Cập nhật dữ liệu ngày mới cho tài khoản: ${accountId}`);
-
                 accountData.lastUpdatedDate = today;
-                
-                // Sử dụng một vòng lặp để reset trạng thái 'done' của tất cả các nhiệm vụ
+                // Reset toàn bộ nhiệm vụ
+                Object.assign(accountData, defaultTasks);
+                this.saveData();
+            } else {
+                // Ngày chưa đổi → merge các nhiệm vụ mới
+                let updated = false;
                 for (const taskName in defaultTasks) {
-                    if (accountData[taskName] && typeof accountData[taskName].done !== 'undefined') {
-                        accountData[taskName].done = false;
+                    if (!accountData[taskName]) {
+                        accountData[taskName] = defaultTasks[taskName];
+                        updated = true;
                     }
                 }
-
-                // Riêng nhiệm vụ Đồ Thạch cần reset lại turn về 1
-                accountData.dothach.turn = 1;
-                this.saveData();
+                if (updated) this.saveData();
             }
 
+            // Xử lý Đổ Thạch lượt 2
             const currentTime = new Date();
             if (accountData.dothach.turn === 1 && currentTime.getHours() >= 16) {
                 accountData.dothach = {
@@ -176,6 +172,7 @@
 
             return accountData;
         }
+
         /**
          * Thêm một nhiệm vụ mới hoặc cập nhật nhiệm vụ hiện tại
          * @param {string} accountId - ID của tài khoản.

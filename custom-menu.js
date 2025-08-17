@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.4
+// @version       2.5
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -948,7 +948,20 @@
                 if (response && response.success && response.can_attack) {
                     console.log(`${this.logPrefix} ✅ Có thể tấn công.`);
                     return true;
-                } else {
+                } 
+                // Kiểm tra trường hợp boss chết: Nhận thưởng và hiến tế
+                else if (response.success && response.message === 'Không có boss để tấn công') {
+                    const rewardResponse = await this.sendApiRequest('wp-json/tong-mon/v1/claim-boss-reward', 'POST', nonce, {});
+                    if (rewardResponse && rewardResponse.success) {
+                        showNotification(rewardResponse.message, 'success');
+                    }
+                    const contributionResponse = await this.sendApiRequest('wp-json/tong-mon/v1/contribute-boss', 'POST', nonce, {});
+                    if (contributionResponse && contributionResponse.success) {
+                        showNotification(contributionResponse.message, 'success');
+                    }
+                    return false;
+                }
+                else {
                     const message = response?.message || 'Không thể tấn công vào lúc này.';
                     console.log(`${this.logPrefix} ⏳ ${message}`);
                     this.showNotification(`⏳ ${message}`, 'info');

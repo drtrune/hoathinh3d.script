@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.3
+// @version       2.4
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -13,7 +13,7 @@
     'use strict';
 
     console.log('%c[HH3D Script] Tải thành công. Đang khởi tạo UI tùy chỉnh.', 'background: #222; color: #bada55; padding: 2px 5px; border-radius: 3px;');
- 
+
     // ===============================================
     // HÀM TIỆN ÍCH CHUNG
     // ===============================================
@@ -29,7 +29,7 @@
         name: 'Điểm danh, Tế lễ, Vấn đáp',
         links: [{
             text: 'Điểm danh - Tế lễ - Vấn đáp',
-            isFullAutomation: true
+            isDiemDanh: true
         }]
     }, {
         name: 'Hoang Vực, Thí Luyện, Phúc Lợi, Bí Cảnh',
@@ -77,9 +77,15 @@
     }
 
     //Lấy Nonce
-    function getNonce() {
+    async function getNonce() {
         if (typeof Better_Messages !== 'undefined' && Better_Messages.nonce) {
             return Better_Messages.nonce;
+        }
+        if (!nonce) {
+            nonce = await getSecurityNonce(weburl, '/s*nonce: \'([a-f0-9]+)\'/');
+            if (nonce) {
+                return nonce;
+            }
         }
         return null;
     }
@@ -138,6 +144,7 @@
                     reward_claimed: false,
                     turn: 1,
                 };
+                accountData.luanvo = { date: today, done: false };
                 this.saveData();
             }
 
@@ -557,12 +564,12 @@
             console.log('[HH3D Đổ Thạch] 🎁 Đã có kết quả phiên. Kiểm tra để nhận thưởng...');
 
             // TÌM LƯỢT CƯỢC TRÚNG NHƯNG CHƯA NHẬN THƯỞNG
-            const claimableWin = userBetStones.find(stone => 
+            const claimableWin = userBetStones.find(stone =>
                 stone.stone_id === sessionData.winning_stone_id && stone.reward_claimed === false
             );
 
             // TÌM LƯỢT CƯỢC TRÚNG VÀ ĐÃ NHẬN THƯỞNG RỒI (dựa trên gợi ý của bạn)
-            const alreadyClaimed = userBetStones.find(stone => 
+            const alreadyClaimed = userBetStones.find(stone =>
                 stone.stone_id === sessionData.winning_stone_id && stone.reward_claimed === true
             );
 
@@ -582,7 +589,7 @@
                 // TRƯỜNG HỢP 4: Không cược -> Thông báo
                 showNotification('[Đổ Thạch] 😶 Bạn đã không tham gia phiên này.', 'info');
             }
-            
+
             return;
         }
 
@@ -647,10 +654,10 @@
      */
     async function placeBet(stone, betAmount, placeBetSecurity) {
         console.log(`[HH3D Đặt Cược] 🪙 Đang tiến hành đặt cược ${betAmount} Tiên Ngọc vào ${stone.name}...`);
-        
+
         const url = ajaxUrl;
         const payload = new URLSearchParams();
-        
+
         payload.append('action', 'place_do_thach_bet');
         payload.append('security', placeBetSecurity);
         payload.append('stone_id', stone.stone_id);
@@ -726,7 +733,7 @@
             return false;
         }
     }
-    
+
     // ===============================================
     // THÍ LUYỆN TÔNG MÔN
     // ===============================================
@@ -734,7 +741,7 @@
     async function doThiLuyenTongMon() {
         console.log('[HH3D Thí Luyện Tông Môn] ▶️ Bắt đầu Thí Luyện Tông Môn');
 
-        // Bước 1: Lấy security nonce. 
+        // Bước 1: Lấy security nonce.
         const securityNonce = await getSecurityNonce(weburl + 'thi-luyen-tong-mon-hh3d', /action: 'open_chest_tltm',\s*security: '([a-f0-9]+)'/);
         if (!securityNonce) {
             showNotification('Lỗi khi lấy security nonce cho Thí Luyện Tông Môn.', 'error');
@@ -768,14 +775,18 @@
                 console.log(`[Thí Luyện Tông Môn] ✅ ${message}`);
                 // Show thông báo chi tiết nếu có
                 if (data.data.tinh_thach) {
-                    showNotification(`[Thí Luyện Tông Môn] Đã nhận được ${data.data.tinh_thach} Tinh Thạch!`, 'success');
+                    showNotification(`[Thí Luyện] Đã nhận được ${data.data.tinh_thach} Tinh Thạch!`, 'success');
                 } else {
                     showNotification(message, 'success');
                 }
             } else {
                 // Trường hợp thất bại
-                const errorMessage = data.data && data.data.message ? data.data.message : 'Lỗi không xác định khi mở rương.';
-                showNotification(`[Thí Luyện Tông Môn] ${errorMessage} `, 'error');
+                if (data.data.message === "Đã hoàn thành Thí Luyện Tông Môn hôm nay, quay lại vào ngày kế tiếp.") {
+                    showNotification(data.data.message, 'info');
+                    taskTracker.markTaskDone(accountId, 'thiluyen');
+                } else {
+                    showNotification(data.data.message, 'error');
+                }
             }
         } catch (e) {
             showNotification('Lỗi mạng khi thực hiện Thí Luyện Tông Môn.', 'error');
@@ -794,7 +805,7 @@
             showNotification('Lỗi khi lấy security nonce cho Phúc Lợi Đường.', 'error');
             return;
         }
-        
+
         const url = ajaxUrl;
         const headers = {
             'Accept': 'application/json, text/javascript, */*; q=0.01',
@@ -807,7 +818,7 @@
         const payloadTime = new URLSearchParams();
         payloadTime.append('action', 'get_next_time_pl');
         payloadTime.append('security', securityNonce);
-        
+
         try {
             const responseTime = await fetch(url, {
                 method: 'POST',
@@ -868,7 +879,7 @@
     // BÍ CẢNH
     // ===============================================
     class BiCanh {
-        constructor(weburl) {
+        constructor() {
             this.weburl = weburl;
             this.logPrefix = '[HH3D Bí Cảnh]';
             this.showNotification = showNotification; // Hàm thông báo từ bên ngoài
@@ -890,7 +901,6 @@
             // Bước 2: Kiểm tra thời gian hồi chiêu
             const canAttack = await this.checkAttackCooldown(nonce);
             if (!canAttack) {
-                this.showNotification('⏳ Đang trong thời gian hồi chiêu. Vui lòng thử lại sau.', 'info');
                 return;
             }
 
@@ -995,8 +1005,8 @@
         async sendApiRequest(endpoint, method, nonce, body = {}) {
             try {
                 const url = `${this.weburl}${endpoint}`;
-                const headers = { 
-                    "Content-Type": "application/json", 
+                const headers = {
+                    "Content-Type": "application/json",
                     "X-WP-Nonce": nonce,
                     "Accept": "*/*",
                     "Accept-Language": "vi,en-US;q=0.5",
@@ -1114,6 +1124,9 @@
 
         /**
          * Tấn công boss Hoang Vực.
+         * @param {string} bossId - ID của boss cần tấn công.
+         * @param {string} nonce - Nonce bảo mật.
+         * @returns {Promise<boolean>} `True` nếu tấn công thành công, ngược lại là `false`.
          */
         async attackHoangVucBoss(bossId, nonce) {
             const currentTime = Date.now();
@@ -1122,7 +1135,7 @@
             payload.append('boss_id', bossId);
             payload.append('nonce', nonce);
             payload.append('request_id', `req_${Math.random().toString(36).substring(2, 8)}${currentTime}`);
-            
+
             console.log(`${this.logPrefix} ⚔️ Đang tấn công boss...`);
             const response = await fetch(this.ajaxUrl, {
                 method: 'POST',
@@ -1133,9 +1146,16 @@
             const data = await response.json();
             if (data.success) {
                 showNotification('✅ Tấn công boss hoang vực hành công', 'success');
-            } else {
+                return true
+            } else if (data.data.error === 'Đạo hữu đã hết lượt tấn công trong ngày.') {
+                taskTracker.markTaskDone(accountId, 'hoangvuc');
+                showNotification('Đạo hữu đã hết lượt tấn công trong ngày.', 'info');
+                return true;
+            }
+            else {
                 const errorMessage = data.data.error || 'Lỗi không xác định khi tấn công.';
                 showNotification(errorMessage, 'error');
+                return false;
             }
         }
 
@@ -1208,7 +1228,32 @@
             // ⏳ Hết lượt đổi nhưng vẫn chưa đạt chiến lược
             console.log(`${this.logPrefix} ⚠️ Đã hết MAX_ATTEMPTS (${MAX_ATTEMPTS}). Chấp nhận nguyên tố cuối cùng: ${myElement}`);
             return myElement;
-        }
+        };
+
+        async getNonceAndRemainingAttacks(url) {
+            const logPrefix = '[Hoang Vực]';
+                console.log(`${logPrefix} ▶️ Đang tải trang từ ${url}...`);
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const html = await response.text();
+
+                    // Regex 1: lấy số lượt đánh
+                    const attacksMatch = html.match(/<div class="remaining-attacks">Lượt đánh còn lại:\s*(\d+)<\/div>/);
+                    const remainingAttacks = attacksMatch ? parseInt(attacksMatch[1], 10) : null;
+
+                    // Regex 2: lấy nonce
+                    const nonceMatch = html.match(/var ajax_boss_nonce = '([a-f0-9]+)'/);
+                    const nonce = nonceMatch ? nonceMatch[1] : null;
+
+                    console.log(`${logPrefix} ✅ Lấy dữ liệu thành công.`);
+                    return { remainingAttacks, nonce };
+
+                } catch (e) {
+                    console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất dữ liệu:`, e);
+                    return { remainingAttacks: null, nonce: null };
+                }
+            }
 
 
         /**
@@ -1218,7 +1263,9 @@
             console.log(`${this.logPrefix} ▶️ Bắt đầu nhiệm vụ với chiến lược: ${maximizeDamage ? 'Tối đa hóa Sát thương' : 'Không giảm Sát thương'}.`);
 
             const hoangVucUrl = `${weburl}hoang-vuc`;
-            const nonce = await getSecurityNonce(hoangVucUrl, /var ajax_boss_nonce = '([a-f0-9]+)'/);
+            //const nonce = await getSecurityNonce(hoangVucUrl, /var ajax_boss_nonce = '([a-f0-9]+)'/);
+            const { remainingAttacks, nonce } = await this.getNonceAndRemainingAttacks(hoangVucUrl);
+
             if (!nonce) {
                 showNotification('Lỗi: Không thể lấy nonce cho Hoang Vực.', 'error');
                 return;
@@ -1250,10 +1297,10 @@
 
                     let myElement = await this.getMyElement();
                     const bossElement = boss.element;
-                    
+
                     // Lấy danh sách các nguyên tố phù hợp
                     const suitableElements = this.getTargetElement(bossElement, maximizeDamage);
-                    
+
                     if (!suitableElements.includes(myElement)) {
                         console.log(`${this.logPrefix} 🔄 Nguyên tố hiện tại (${myElement}) không phù hợp. Đang thực hiện đổi.`);
                         const newElement = await this.changeElementUntilSuitable(myElement, bossElement, maximizeDamage, nonce);
@@ -1267,7 +1314,7 @@
                     } else {
                         console.log(`${this.logPrefix} ✅ Nguyên tố hiện tại (${myElement}) đã phù hợp. Không cần đổi.`);
                     }
-                    
+
                     const timePayload = new URLSearchParams();
                     timePayload.append('action', 'get_next_attack_time');
                     const timeResponse = await fetch(this.ajaxUrl, {
@@ -1279,7 +1326,11 @@
                     const nextAttackTime = await timeResponse.json();
 
                     if (nextAttackTime.success && Date.now() >= nextAttackTime.data) {
-                        await this.attackHoangVucBoss(boss.id, nonce);
+                        // Thực hiện tấn công boss Hoang Vực, nếu thành công và còn 1 lượt tấn công thì đánh dấu nhiệm vụ hoàn thành
+                        if (await this.attackHoangVucBoss(boss.id, nonce) && this.remainingAttacks === 1) {
+                            taskTracker.markTaskDone(accountId, 'hoangvuc');
+                        }
+                        
                     } else {
                         const remainingTime = nextAttackTime.data - Date.now();
                         const remainingSeconds = Math.floor(remainingTime / 1000);
@@ -1307,7 +1358,7 @@
 
     class LuanVo {
         constructor() {
-            this.weburl = 'https://hoathinh3d.mx/';
+            this.weburl = weburl;
             this.logPrefix = '[HH3D Luận Võ]';
         }
 
@@ -1324,11 +1375,22 @@
                     body: JSON.stringify(body),
                     credentials: 'include'
                 });
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+
+                const contentType = response.headers.get("content-type");
+                let data = null;
+                if (contentType && contentType.includes("application/json")) {
+                    data = await response.json();
+                } else {
+                    data = await response.text();
                 }
-                return await response.json();
+
+                if (!response.ok) {
+                    // vẫn trả về JSON để caller xử lý
+                    console.warn(`${this.logPrefix} ⚠️ API trả về lỗi ${response.status}:`, data);
+                    return data;
+                }
+
+                return data;
             } catch (error) {
                 console.error(`${this.logPrefix} ❌ Lỗi khi gửi yêu cầu tới ${endpoint}:`, error);
                 return null;
@@ -1391,7 +1453,7 @@
             // Bước mới: Kiểm tra nếu đối thủ bật auto_accept
             if (sendResult.data.auto_accept) {
                 console.log(`${this.logPrefix} ✨ Đối thủ tự động chấp nhận, đang hoàn tất trận đấu...`);
-                
+
                 const approveEndpoint = 'wp-json/luan-vo/v1/auto-approve-challenge';
                 const approveBody = {
                     challenge_id: sendResult.data.challenge_id,
@@ -1401,23 +1463,19 @@
                 const approveResult = await this.sendApiRequest(approveEndpoint, 'POST', nonce, approveBody);
 
                 if (approveResult && approveResult.success) {
-                    console.log(`${this.logPrefix} ✅ Trận đấu đã hoàn tất. Bạn đã thắng!`);
-                    showNotification(`🎉 Đã đánh bại người chơi ID ${userId}!`, 'success');
+                    showNotification(`[Luận võ]${approveResult.data.message}!`, 'success');
                     return true;
                 } else {
                     const message = approveResult?.data?.message || 'Lỗi không xác định khi hoàn tất trận đấu.';
-                    console.error(`${this.logPrefix} ❌ Hoàn tất trận đấu thất bại: ${message}`);
                     showNotification(`❌ Lỗi hoàn tất trận đấu: ${message}`, 'error');
                     return false;
                 }
             } else {
-                console.log(`${this.logPrefix} ✅ Gửi khiêu chiến thành công, đối thủ không bật tự động chấp nhận.`);
                 showNotification(`✅ Đã gửi khiêu chiến đến ${userId}! Đang chờ đối thủ chấp nhận.`, 'success');
                 return true;
             }
         } else {
             const message = sendResult?.data?.message || 'Lỗi không xác định.';
-            console.error(`${this.logPrefix} ❌ Gửi khiêu chiến thất bại: ${message}`);
             showNotification(`❌ Gửi khiêu chiến thất bại: ${message}`, 'error');
             return false;
         }
@@ -1428,12 +1486,12 @@
          */
         async goToLuanVoPage() {
             const luanVoUrl = `${weburl}/luan-vo-duong`;
-            
+
             if (confirm("Bạn có muốn chuyển đến trang Luận Võ Đường không?")) {
                 window.location.href = luanVoUrl;
             }
         }
-        
+
 
         /**
          * Gửi yêu cầu nhận thưởng Luận Võ và xử lý phản hồi từ server.
@@ -1443,42 +1501,27 @@
             console.log(`${this.logPrefix} 🎁 Đang gửi yêu cầu nhận thưởng...`);
 
             const endpoint = 'wp-json/luan-vo/v1/receive-reward';
-            const body = {}; 
+            const body = {};
 
             try {
-                const response = await fetch(`${this.weburl}${endpoint}`, {
-                    method: 'POST',
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-WP-Nonce": nonce
-                    },
-                    body: JSON.stringify(body),
-                    credentials: 'include'
-                });
-
-                const textResponse = await response.text();
-
-                try {
-                    const result = JSON.parse(textResponse);
-                    // Case 1: Nhận được phản hồi JSON
-                    if (result.success === false) {
-                        const message = result.message || 'Lỗi không xác định.';
-                        showNotification(message, 'error');
-                        return;
-                    }
-                } catch (e) {
-                    // Case 2: Không thể phân tích JSON (do response rỗng hoặc không phải JSON)
-                    // Điều này xảy ra khi trang web tự tải lại sau khi gửi yêu cầu.
-                    console.log(`${this.logPrefix} ✅ Lệnh nhận thưởng đã được gửi đi. Không có phản hồi JSON.`);
+                const response = await this.sendApiRequest(endpoint, 'POST', nonce, body);
+                if (!response) {
+                    return;
                 }
-                
-                // Nếu không có lỗi, coi như thành công.
-                showNotification('🎉 Đã nhận thưởng Luận Võ thành công!', 'success');
-
+                if (response.success === true) {
+                    showNotification(`🎉 Luận võ: ${response.message}`, 'success');
+                    taskTracker.markTaskDone(accountId, 'luanvo');
+                    return;
+                } else if (response.message === "Đạo hữu đã nhận thưởng trong ngày hôm nay.") {
+                    showNotification('🎁 Bạn đã nhận thưởng Luận Võ hôm nay rồi!', 'info')
+                    taskTracker.markTaskDone(accountId, 'luanvo');
+                    return;
+                } else {
+                    const errorMessage = response.message || 'Lỗi không xác định khi nhận thưởng.';
+                    showNotification(`❌ ${errorMessage}`, 'error');
+                }
             } catch (error) {
-                // Lỗi mạng hoặc lỗi khác
-                console.error(`${this.logPrefix} ❌ Lỗi khi gửi lệnh nhận thưởng:`, error);
-                showNotification(`❌ Lỗi khi gửi lệnh nhận thưởng: ${error.message}`, 'error');
+                showNotification(`❌ Lỗi mạng khi gửi yêu cầu nhận thưởng. ${error}`, 'error');
             }
         }
         /**
@@ -1495,13 +1538,13 @@
                 showNotification('❌ Lỗi: Không thể lấy nonce cho Luận Võ.', 'error');
                 return;
             }
-            
+
             // Bước 2: Tham gia trận đấu
             const joinResult = await this.sendApiRequest(
                 'wp-json/luan-vo/v1/join-battle', 'POST', nonce, {}
             );
             console.log(`${this.logPrefix} ✅ Tham gia trận đấu thành công.`);
-            
+
             // Bước 3: Đảm bảo tự động chấp nhận khiêu chiến
             const autoAcceptSuccess = await this.ensureAutoAccept(nonce);
             if (!autoAcceptSuccess) {
@@ -1516,29 +1559,36 @@
                 this.goToLuanVoPage();
                 return;
             }
-            let users = await this.getFollowingUsers(nonce);
-            if (!users || users.length === 0) {
-                showNotification('ℹ️ Không có người chơi phù hợp để khiêu chiến.', 'info');
-                return;
-            }
-            
+
+            // vòng lặp gửi khiêu chiến
             let challengesSent = 0;
-            const maxChallenges = 5; // Có thể thay đổi
-            
-            for (const user of users) {
-                if (challengesSent >= maxChallenges) {
+
+            let myCanSend = 0;
+            let users = [];
+
+            do {
+                // Lấy danh sách following
+                users = await this.getFollowingUsers(nonce);
+                if (!users || users.length === 0) {
+                    showNotification('ℹ️ Bạn chưa theo dõi ai để khiêu chiến.', 'info');
                     break;
                 }
-                if (user.challenges_remaining > 0) {
-                    const challengeSuccess = await this.sendChallenge(user.id, nonce);
-                    if (challengeSuccess) {
-                        challengesSent++;
-                        await this.delay(5000); // Cách nhau 5 giây
+                // Lấy can_send_count từ user đầu tiên
+                myCanSend = users[0]?.can_send_count ?? 0;
+                for (const user of users) {
+                    if (myCanSend <= 0) break; // hết lượt thì thoát
+                    if (user.challenges_remaining > 0) {
+                        const challengeSuccess = await this.sendChallenge(user.id, nonce);
+                        if (challengeSuccess) {
+                            challengesSent++;
+                            await this.delay(4000); // delay 4s
+                        }
                     }
                 }
-            }
-            
+            } while (myCanSend > 0);
+
             showNotification(`✅ Hoàn thành! Đã gửi ${challengesSent} khiêu chiến.`, 'success');
+
             // Bước 5: Nhận thưởng nếu có
             const rewardResult = await this.receiveReward(nonce);
         }
@@ -1546,7 +1596,7 @@
 
     // ===============================================
     // HÀM HIỂN THỊ THÔNG BÁO
-    //  
+    //
     function showNotification(message, type = 'success', duration = 3000) {
 
         // --- Bắt đầu phần chèn CSS tự động ---
@@ -1706,15 +1756,20 @@
                 console.log('[HH3D Hoang Vực] 🖱️ Nút Hoang vực vừa được nhấn');
                 const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
                 console.log(`[HH3D Hoang Vực] Chế độ Tối đa hoá sát thương: ${maximizeDamage ? 'Bật' : 'Tắt'}`);
-
+                
                 hoangVucButton.disabled = true;
                 hoangVucButton.textContent = 'Đang xử lý...';
-                
+
                 // Gọi phương thức qua instance của class
-                await hoangvuc.doHoangVuc(maximizeDamage); // <--- SỬA Ở ĐÂY
-                
-                hoangVucButton.disabled = false;
-                hoangVucButton.textContent = 'Hoang Vực';
+                await hoangvuc.doHoangVuc(maximizeDamage);
+
+                if (taskTracker.isTaskDone(accountId, 'hoangvuc')) {
+                    hoangVucButton.disabled = true;
+                    hoangVucButton.textContent = 'Hoang Vực ✅';
+                } else {
+                    hoangVucButton.disabled = false;
+                    hoangVucButton.textContent = 'Hoang Vực';
+                }
             });
 
             // --- Nút cài đặt nhỏ ---
@@ -1746,13 +1801,16 @@
 
             parentGroup.appendChild(settingsButton);
             parentGroup.appendChild(hoangVucButton);
-            
+            if (taskTracker.isTaskDone(accountId, 'hoangvuc')) {
+                    hoangVucButton.disabled = true;
+                    hoangVucButton.textContent = 'Hoang Vực ✅';
+                }
             updateSettingsIcon();
         }
-    
+
     //Hàm tạo menu Luận Võ
     const luanVo = new LuanVo();
-    function createLuanVoMenu(parentGroup) {
+    async function createLuanVoMenu(parentGroup) {
         const luanVoButton = document.createElement('button');
         const luanVoSettingsButton = document.createElement('button');
         luanVoSettingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
@@ -1760,7 +1818,7 @@
         // Khởi tạo giá trị mặc định nếu chưa có
         // Sử dụng '1' và '0' để biểu thị trạng thái BẬT/TẮT.
         if (localStorage.getItem('luanVoAutoChallenge') === null) {
-            localStorage.setItem('luanVoAutoChallenge', '1'); 
+            localStorage.setItem('luanVoAutoChallenge', '1');
         }
 
         // Lấy giá trị ban đầu và chuyển thành boolean
@@ -1781,7 +1839,7 @@
             autoChallengeEnabled = !autoChallengeEnabled; // Đảo ngược trạng thái
             localStorage.setItem('luanVoAutoChallenge', autoChallengeEnabled ? '1' : '0'); // Lưu lại vào localStorage
             updateButtonState(autoChallengeEnabled); // Cập nhật giao diện
-            
+
             const message = autoChallengeEnabled ? 'Tự động thực hiện Luận Võ đã được bật' : 'Tự động thực hiện Luận Võ đã được tắt';
             showNotification(`[Luận Võ] ${message}`, 'info');
             console.log(`[HH3D Luận Võ] Trạng thái tự động thực hiện Luận Võ: ${autoChallengeEnabled}`);
@@ -1802,17 +1860,58 @@
                 console.error('[HH3D Luận Võ] ❌ Lỗi trong quá trình Luận Võ:', error);
                 showNotification('❌ Lỗi trong quá trình Luận Võ.', 'error');
             } finally {
+                if (taskTracker.isTaskDone(accountId, 'luanvo')) {
+                    luanVoButton.disabled = true;
+                    luanVoButton.textContent = 'Luận Võ ✅';
+                } else {
                 luanVoButton.disabled = false;
                 luanVoButton.textContent = 'Luận Võ';
+                }
             }
         });
 
         parentGroup.appendChild(luanVoButton);
+        if (taskTracker.isTaskDone(accountId, 'luanvo')) {
+            luanVoButton.disabled = true;
+            luanVoButton.textContent = 'Luận Võ ✅';
+        }
     }
-    
-    
+
+    // Hàm tạo nút bí cảnh
+    const bicanh = new BiCanh();
+    async function createBiCanhMenu(parentGroup) {
+        const biCanhButton = document.createElement('button');
+        biCanhButton.textContent = 'Bí Cảnh';
+        biCanhButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
+        biCanhButton.addEventListener('click', async () => {
+            console.log('[HH3D Bí Cảnh] Nút Bí Cảnh đã được nhấn');
+            biCanhButton.disabled = true;
+            biCanhButton.textContent = 'Đang xử lý...';
+            try {
+                await bicanh.doBiCanh();
+            } catch (error) {
+                console.error('[HH3D Bí Cảnh] ❌ Lỗi trong quá trình Bí Cảnh:', error);
+                showNotification('❌ Lỗi trong quá trình Bí Cảnh.', 'error');
+            } finally {
+                if (await bicanh.isDailyLimit()) {
+                                    biCanhButton.disabled = true;
+                                    biCanhButton.textContent = 'Bí Cảnh ✅';
+                } else {
+                // Nếu không đạt giới hạn, cho phép nhấn lại
+                biCanhButton.disabled = false;
+                biCanhButton.textContent = 'Bí Cảnh';
+                }
+            }
+        });
+        parentGroup.appendChild(biCanhButton);
+        if (await bicanh.isDailyLimit()) {
+                                    biCanhButton.disabled = true;
+                                    biCanhButton.textContent = 'Bí Cảnh ✅';
+        }
+    }
+
     // Hàm tạo nút menu tùy chỉnh
-    function createCustomMenuButton() {
+    async function createCustomMenuButton() {
     addStyle(`
             /* Kiểu chung cho toàn bộ menu */
             .custom-script-menu {
@@ -1934,6 +2033,11 @@
             .custom-script-hoang-vuc-btn:hover {
                 background-color: #3498db;
             }
+            .custom-script-hoang-vuc-btn:disabled {
+                background-color: #7f8c8d;
+                cursor: not-allowed;
+                box-shadow: none;
+            }
             .custom-script-hoang-vuc-settings-btn {
                 background-color: #3498db;
                 color: white;
@@ -1987,7 +2091,7 @@
                         dropdownMenu.appendChild(groupDiv);
 
                         group.links.forEach(link => {
-                            if (link.isFullAutomation) {
+                            if (link.isDiemDanh) {
                                 const autoTaskButton = document.createElement('button');
                                 autoTaskButton.textContent = link.text;
                                 autoTaskButton.id = 'auto-task-btn';
@@ -1998,11 +2102,9 @@
                                     autoTaskButton.disabled = true;
                                     autoTaskButton.textContent = 'Đang xử lý...';
 
-                                    const nonce = getNonce();
+                                    const nonce = await getNonce();
                                     if (!nonce) {
-                                        const msg = 'Không tìm thấy nonce! Vui lòng tải lại trang.';
-                                        showNotification(msg, 'error');
-                                        console.error(`[HH3D Script] ❌ ERROR: ${msg}`);
+                                        showNotification('Không tìm thấy nonce! Vui lòng tải lại trang.', 'error');
                                         autoTaskButton.disabled = false;
                                         autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
                                         return;
@@ -2039,11 +2141,20 @@
                                     thiLuyenButton.disabled = true;
                                     thiLuyenButton.textContent = 'Đang xử lý...';
                                     await doThiLuyenTongMon();
-                                    thiLuyenButton.textContent = 'Thí Luyện';
-                                    thiLuyenButton.disabled = false;
+                                    if (taskTracker.isTaskDone(accountId, 'thiluyen')) {
+                                        thiLuyenButton.disabled = true;
+                                        thiLuyenButton.textContent = 'Thí Luyện ✅';
+                                    } else {
+                                        thiLuyenButton.textContent = 'Thí Luyện';
+                                        thiLuyenButton.disabled = false;
+                                    }
                                     console.log('[HH3D Script] ✅ Thí Luyện Tông Môn đã hoàn thành.');
                                 });
                                 groupDiv.appendChild(thiLuyenButton);
+                                if (taskTracker.isTaskDone(accountId, 'thiluyen')) {
+                                    thiLuyenButton.disabled = true;
+                                    thiLuyenButton.textContent = 'Thí Luyện ✅';
+                                }
                             } else if (link.isPhucLoi) {
                                 const phucLoiButton = document.createElement('button');
                                 phucLoiButton.textContent = link.text;
@@ -2068,32 +2179,15 @@
                                         phucLoiButton.textContent = 'Phúc Lợi ✅';
                                     }
                             } else if (link.isBiCanh) {
-                                const biCanhButton = document.createElement('button');
-                                biCanhButton.textContent = link.text;
-                                biCanhButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-                                const bicanh = new BiCanh();
-                                biCanhButton.addEventListener('click', async() => {
-                                    console.log('[HH3D Script] 🖱️ Nút Bí Cảnh đã được nhấn');
-                                    biCanhButton.disabled = true;
-                                    biCanhButton.textContent = 'Đang xử lý...';
-                                    await bicanh.doBiCanh();
-                                    biCanhButton.textContent = 'Bí Cảnh';
-                                    biCanhButton.disabled = false;
-                                    console.log('[HH3D Script] ✅ Bí Cảnh đã hoàn thành.');
-                                });
-                                groupDiv.appendChild(biCanhButton);
-                                const biCanhLimit =  bicanh.isDailyLimit();
-                                if (biCanhLimit) {
-                                    biCanhButton.disabled = true;
-                                    biCanhButton.textContent = 'Bí Cảnh ✅';
-                                }
+                                groupDiv.className = 'custom-script-menu-group';
+                                createBiCanhMenu(groupDiv);
                             } else if (link.isHoangVuc) {
                                 groupDiv.className = 'custom-script-hoang-vuc-group';
                                 createHoangVucMenu(groupDiv);
                             } else if (link.isLuanVo) {
                                 groupDiv.className = 'custom-script-hoang-vuc-group';
                                 createLuanVoMenu(groupDiv);
-                            } 
+                            }
                             else {
                                 const menuItem = document.createElement('a');
                                 menuItem.classList.add('custom-script-menu-link');
@@ -2140,6 +2234,7 @@
         console.log('[HH3D Script] Đang theo dõi DOM để chèn nút.');
     }
 
+
     // ===============================================
     // KHỞI TẠO SCRIPT
     // ===============================================
@@ -2149,7 +2244,7 @@
             let accountData = taskTracker.getAccountData(accountId)
             console.log(`[HH3D Script] ✅ Đã lấy dữ liệu tài khoản: ${JSON.stringify(accountData)}`);
         } else {
-            console.warn('[HH3D Script] ⚠️ Không thể lấy ID tài khoản. Một số tính năng có thể không hoạt động.');      
+            console.warn('[HH3D Script] ⚠️ Không thể lấy ID tài khoản. Một số tính năng có thể không hoạt động.');
         }
     createCustomMenuButton();
 })();

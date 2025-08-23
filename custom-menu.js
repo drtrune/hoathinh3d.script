@@ -1853,7 +1853,7 @@
         }
 
         async claimReward(mineId) {
-            const nonce = await this.#getNonce(/action: 'claim_mycred_reward',\s*mine_id:\s*mineId,\s*security: '([a-f0-9]+)'/);
+            const nonce = await this.#getNonce(/action: 'claim_mycred_reward',\s*mine_id:\s*mine_id,\s*security: '([a-f0-9]+)'/);
             if (!nonce) { showNotification('Lỗi nonce (claim_reward).', 'error'); return false; }
             const payload = new URLSearchParams({ action: 'claim_mycred_reward', mine_id: mineId, security: nonce });
             try {
@@ -1928,6 +1928,7 @@
 
                 if (myInfo.time_spent !== "Đạt tối đa") {
                     console.log(`[Khoáng mạch] Chưa đạt tối đa, thoát vòng lặp.`);
+                    showNotification(`Khoáng mạch chưa đủ thời gian. Hiện đạt: ${myInfo.time_spent}`, 'warn');
                     // Có thể thêm delay để tránh spam server
                     break;
                 }

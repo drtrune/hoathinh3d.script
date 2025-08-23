@@ -1928,7 +1928,7 @@
 
                 if (myInfo.time_spent !== "Đạt tối đa") {
                     console.log(`[Khoáng mạch] Chưa đạt tối đa, thoát vòng lặp.`);
-                    showNotification(`Khoáng mạch chưa đủ thời gian. Hiện đạt: ${myInfo.time_spent}`, 'warn');
+                    showNotification(`Khoáng mạch chưa đủ thời gian.\nHiện đạt: ${myInfo.time_spent}`, 'warn');
                     // Có thể thêm delay để tránh spam server
                     break;
                 }

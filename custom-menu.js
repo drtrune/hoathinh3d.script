@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.5
+// @version       2.6
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -47,13 +47,16 @@
             isBiCanh: true
         }]
     }, {
-        name: 'Luận võ, Khoáng mạch',
+        name: 'Luận võ',
         links: [{
             text: 'Luận Võ',
             isLuanVo: true
-        }, {
+        }]
+    }, {
+        name: 'Luận võ, Khoáng mạch',
+        links: [{
             text: 'Khoáng Mạch',
-            url: weburl + 'khoang-mach'
+            isKhoangMach: true
         }]
     }, {
         name: 'Bảng hoạt động ngày',
@@ -138,7 +141,7 @@
                 phucloi: { date: today, done: false, nextTime: null },
                 hoangvuc: { date: today, done: false, nextTime: null },
                 dothach: { betplaced: false, reward_claimed: false, turn: 1 },
-                luanvo: { date: today, done: false } // bổ sung nhiệm vụ mới
+                luanvo: { date: today, battle_joined: false, auto_accept: false, done: false }
             };
 
             if (accountData.lastUpdatedDate !== today) {
@@ -174,16 +177,16 @@
         }
 
         /**
-         * Thêm một nhiệm vụ mới hoặc cập nhật nhiệm vụ hiện tại
+         * Cập nhật một thuộc tính cụ thể của một nhiệm vụ.
          * @param {string} accountId - ID của tài khoản.
-         * @param {string} taskName - Tên nhiệm vụ: 'diemdanh', 'thiluyen', 'bicanh', 'phucloi', 'hoangvuc', 'dothach'.
-         * @param {object} newData - Dữ liệu nhiệm vụ mới hoặc cập nhật.
-         * @return {void}
+         * @param {string} taskName - Tên nhiệm vụ (ví dụ: 'dothach').
+         * @param {string} key - Tên thuộc tính cần cập nhật (ví dụ: 'bet_placed').
+         * @param {*} value - Giá trị mới cho thuộc tính.
          */
-        updateTask(accountId, taskName, newData) {
+        updateTask(accountId, taskName, key, value) {
             const accountData = this.getAccountData(accountId);
             if (accountData[taskName]) {
-                Object.assign(accountData[taskName], newData);
+                accountData[taskName][key] = value;
                 this.saveData();
             } else {
                 console.error(`[TaskTracker] Nhiệm vụ "${taskName}" không tồn tại cho tài khoản "${accountId}"`);
@@ -239,6 +242,11 @@
                 console.error(`[TaskTracker] Nhiệm vụ "${taskName}" không tồn tại cho tài khoản "${accountId}"`);
             }
         }
+
+        getNextTime(accountId, taskName) {
+            const accountData = this.getAccountData(accountId);
+            return accountData[taskName].nexTime;
+        }
     }
 
     /**
@@ -276,168 +284,224 @@
     }
 
 
+    /**
+     * Cộng thêm phút và giây vào thời điểm hiện tại và trả về một đối tượng Date mới.
+     * @param {string} timeString - Chuỗi thời gian định dạng "mm:ss" (phút:giây).
+     * @returns {Date} - String dạng ISO cho thời gian được cộng thêm
+     */
+    function timePlus(timeString) {
+        const now = new Date();
+        const [minutes, seconds] = timeString.split(':').map(Number);
+        const millisecondsToAdd = (minutes * 60 + seconds) * 1000;
+        return new Date(now.getTime() + millisecondsToAdd).toISOString();
+        }
+
+
     // ===============================================
     // VẤN ĐÁP
     // ===============================================
 
-    // Hàm tải đáp án từ GitHub
-    function loadAnswersFromGitHub() {
-        return new Promise((resolve, reject) => {
-            if (questionDataCache) {
-                resolve();
+    class VanDap {
+        constructor(nonce) {
+            this.nonce = nonce
+            this.ajaxUrl = ajaxUrl;
+            this.QUESTION_DATA_URL = QUESTION_DATA_URL;
+            this.showNotification = showNotification;
+            this.taskTracker = taskTracker;
+            this.questionDataCache = null;
+        }
+
+        /**
+         * Tải dữ liệu đáp án từ nguồn GitHub.
+         * Dữ liệu được lưu vào cache để tránh các lần tìm nạp không cần thiết.
+         */
+        async loadAnswersFromGitHub() {
+            if (this.questionDataCache) {
                 return;
             }
             console.log('[Vấn Đáp] ▶️ Đang tải đáp án...');
-            fetch(QUESTION_DATA_URL)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! Status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    questionDataCache = data;
-                    console.log("[Vấn Đáp] ✅ Đã tải đáp án.");
-                    resolve();
-                })
-                .catch(e => {
-                    console.error("[Vấn Đáp] ❌ Lỗi tải hoặc parse JSON:", e);
-                    showNotification('Lỗi khi tải đáp án. Vui lòng thử lại.', 'error');
-                    reject(e);
-                });
-        });
-    }
-
-    //Hàm kiểm tra câu hỏi và trả lời
-    async function checkAnswerAndSubmit(question, nonce, headers, url) {
-        const normalizedIncomingQuestion = question.question.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '');
-
-        let foundAnswer = null;
-
-        for (const storedQuestionKey in questionDataCache.questions) {
-            const normalizedStoredQuestionKey = storedQuestionKey.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '');
-
-            if (normalizedStoredQuestionKey === normalizedIncomingQuestion) {
-                foundAnswer = questionDataCache.questions[storedQuestionKey];
-                break;
+            try {
+                const response = await fetch(this.QUESTION_DATA_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                this.questionDataCache = await response.json();
+                console.log("[Vấn Đáp] ✅ Đã tải đáp án.");
+            } catch (e) {
+                console.error("[Vấn Đáp] ❌ Lỗi tải hoặc parse JSON:", e);
+                this.showNotification('Lỗi khi tải đáp án. Vui lòng thử lại.', 'error');
+                throw e; // Ném lại lỗi để hàm gọi xử lý
             }
         }
 
-        if (!foundAnswer) {
-            showNotification(`Vấn Đáp: Không tìm thấy đáp án cho câu hỏi: "${question}"`, 'error');
-            return false;
-        }
+        /**
+         * Tìm câu trả lời đúng cho một câu hỏi và gửi nó đi.
+         * @param {object} question Đối tượng câu hỏi từ máy chủ.
+         * @param {object} headers Headers của yêu cầu để gửi đi.
+         * @returns {Promise<boolean>} True nếu câu trả lời được gửi thành công, ngược lại là false.
+         */
+        async checkAnswerAndSubmit(question, headers) {
+            const normalizedIncomingQuestion = question.question.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '');
 
-        const answerIndex = question.options.findIndex(option =>
-            option.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '') ===
-            foundAnswer.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '')
-        );
+            let foundAnswer = null;
 
-        if (answerIndex === -1) {
-            console.error(`[HH3D Vấn Đáp] ❌ Lỗi: Đáp án "${foundAnswer}" không có trong các lựa chọn của server.`);
-            showNotification(`Vấn Đáp: Câu hỏi: "${question}" không có đáp án đúng trong server.`, 'error');
-            return false;
-        }
+            // Tìm câu trả lời trong dữ liệu cache
+            for (const storedQuestionKey in this.questionDataCache.questions) {
+                const normalizedStoredQuestionKey = storedQuestionKey.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '');
+                if (normalizedStoredQuestionKey === normalizedIncomingQuestion) {
+                    foundAnswer = this.questionDataCache.questions[storedQuestionKey];
+                    break;
+                }
+            }
 
-        const payloadSubmitAnswer = new URLSearchParams();
-        payloadSubmitAnswer.append('action', 'save_quiz_result');
-        payloadSubmitAnswer.append('question_id', question.id);
-        payloadSubmitAnswer.append('answer', answerIndex);
+            if (!foundAnswer) {
+                this.showNotification(`Vấn Đáp: Không tìm thấy đáp án cho câu hỏi: "${question.question}"`, 'error');
+                return false;
+            }
 
-        const responseSubmit = await fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: payloadSubmitAnswer,
-            credentials: 'include'
-        });
+            // Tìm chỉ mục của câu trả lời đúng trong các lựa chọn do máy chủ cung cấp
+            const answerIndex = question.options.findIndex(option =>
+                option.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '') ===
+                foundAnswer.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?\s]/g, '')
+            );
 
-        const dataSubmit = await responseSubmit.json();
-        if (dataSubmit.success) {
-            return true;
-        } else {
-            console.error(`[HH3D Vấn Đáp] ❌ Lỗi khi gửi đáp án:`, dataSubmit.message);
-            showNotification(`Vấn Đáp: Lỗi khi gửi đáp án.`, 'error');
-            return false;
-        }
-    }
+            if (answerIndex === -1) {
+                console.error(`[HH3D Vấn Đáp] ❌ Lỗi: Đáp án "${foundAnswer}" không có trong các lựa chọn của server.`);
+                this.showNotification(`Vấn Đáp: Câu hỏi: "${question.question}" không có đáp án đúng trong server.`, 'error');
+                return false;
+            }
 
-    //Hàm vấn đáp
-    async function doVanDap(nonce) {
-        try {
-            await loadAnswersFromGitHub();
+            // Gửi câu trả lời
+            const payloadSubmitAnswer = new URLSearchParams();
+            payloadSubmitAnswer.append('action', 'save_quiz_result');
+            payloadSubmitAnswer.append('question_id', question.id);
+            payloadSubmitAnswer.append('answer', answerIndex);
 
-            console.log('[HH3D Vấn Đáp] ▶️ Bắt đầu Vấn Đáp');
-            const url = ajaxUrl;
-            const headers = {
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-Wp-Nonce': nonce,
-            };
-
-            let correctCount = 0;
-            let answeredThisSession = 0;
-            const maxAttempts = 10;
-            let currentAttempt = 0;
-            let totalQuestions = 0;
-
-            while (correctCount < 5 && currentAttempt < maxAttempts) {
-                currentAttempt++;
-                const payloadLoadQuiz = new URLSearchParams();
-                payloadLoadQuiz.append('action', 'load_quiz_data');
-
-                const responseQuiz = await fetch(url, {
+            try {
+                const responseSubmit = await fetch(this.ajaxUrl, {
                     method: 'POST',
                     headers: headers,
-                    body: payloadLoadQuiz,
+                    body: payloadSubmitAnswer,
                     credentials: 'include'
                 });
 
-                const dataQuiz = await responseQuiz.json();
-
-                if (!dataQuiz.success || !dataQuiz.data || !dataQuiz.data.questions) {
-                    showNotification(`Vấn Đáp: ${dataQuiz.data.message || 'Lỗi khi lấy câu hỏi'}`, 'warn');
-                    return;
+                const dataSubmit = await responseSubmit.json();
+                if (dataSubmit.success) {
+                    return true;
+                } else {
+                    console.error(`[HH3D Vấn Đáp] ❌ Lỗi khi gửi đáp án:`, dataSubmit.message);
+                    this.showNotification(`Vấn Đáp: Lỗi khi gửi đáp án.`, 'error');
+                    return false;
                 }
+            } catch (error) {
+                console.error(`[HH3D Vấn Đáp] ❌ Lỗi mạng khi gửi đáp án:`, error);
+                this.showNotification(`Vấn Đáp: Lỗi mạng khi gửi đáp án.`, 'error');
+                return false;
+            }
+        }
 
-                if (dataQuiz.data.completed) {
-                    showNotification('Đã hoàn thành vấn đáp hôm nay.', 'success');
-                    taskTracker.markTaskDone(accountId, 'diemdanh');
-                    return;
-                }
+        /**
+         * Hàm chính để chạy quy trình Vấn Đáp.
+         * @param {string} nonce Nonce của WordPress để xác thực.
+         */
+        async doVanDap(nonce) {
+            try {
+                await this.loadAnswersFromGitHub();
 
-                const questions = dataQuiz.data.questions;
-                totalQuestions = questions.length;
-                correctCount = dataQuiz.data.correct_answers || 0;
-                const questionsToAnswer = questions.slice(correctCount);
+                console.log('[HH3D Vấn Đáp] ▶️ Bắt đầu Vấn Đáp');
+                const headers = {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-Wp-Nonce': nonce,
+                };
 
-                if (questionsToAnswer.length === 0) {
-                    showNotification(`Vấn Đáp: Đã hoàn thành ${correctCount}/${totalQuestions} câu.`, 'success');
-                    return;
-                }
+                let correctCount = 0;
+                let answeredThisSession = 0;
+                const maxAttempts = 10;
+                let currentAttempt = 0;
+                let totalQuestions = 0;
 
-                let newAnswersFound = false;
-                for (const question of questionsToAnswer) {
-                    const isAnsweredSuccessfully = await checkAnswerAndSubmit(question, nonce, headers, url);
-                    if (isAnsweredSuccessfully) {
-                        answeredThisSession++;
-                        newAnswersFound = true;
+                while (correctCount < 5 && currentAttempt < maxAttempts) {
+                    currentAttempt++;
+                    const payloadLoadQuiz = new URLSearchParams();
+                    payloadLoadQuiz.append('action', 'load_quiz_data');
+
+                    const responseQuiz = await fetch(this.ajaxUrl, {
+                        method: 'POST',
+                        headers: headers,
+                        body: payloadLoadQuiz,
+                        credentials: 'include'
+                    });
+
+                    const dataQuiz = await responseQuiz.json();
+
+                    if (!dataQuiz.success || !dataQuiz.data) {
+                        this.showNotification(`Vấn Đáp: ${dataQuiz.data?.message || 'Lỗi khi lấy câu hỏi'}`, 'warn');
+                        return;
+                    }
+
+                    if (dataQuiz.data.completed) {
+                        this.showNotification('Đã hoàn thành vấn đáp hôm nay.', 'success');
+                        if (this.taskTracker && accountId) {
+                            this.taskTracker.markTaskDone(accountId, 'diemdanh');
+                        }
+                        return;
+                    }
+
+                    if (!dataQuiz.data.questions) {
+                        this.showNotification(`Vấn Đáp: Không có câu hỏi nào được tải.`, 'warn');
+                        return;
+                    }
+
+                    const questions = dataQuiz.data.questions;
+                    totalQuestions = questions.length;
+                    correctCount = dataQuiz.data.correct_answers || 0;
+                    const questionsToAnswer = questions.slice(correctCount);
+
+                    if (questionsToAnswer.length === 0) {
+                        break;
+                    }
+
+                    let newAnswersFound = false;
+                    for (const question of questionsToAnswer) {
+                        const isAnsweredSuccessfully = await this.checkAnswerAndSubmit(question, headers);
+                        if (isAnsweredSuccessfully) {
+                            answeredThisSession++;
+                            newAnswersFound = true;
+                        }
+                    }
+
+                    if (!newAnswersFound) {
+                        this.showNotification(`Vấn Đáp: Không tìm thấy câu trả lời mới, dừng lại.`, 'warn');
+                        break;
+                    }
+
+                    if (correctCount + answeredThisSession < 5) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
                 }
 
-                if (!newAnswersFound) {
-                    break;
+                // Tìm nạp trạng thái cuối cùng để báo cáo chính xác
+                const finalPayload = new URLSearchParams();
+                finalPayload.append('action', 'load_quiz_data');
+                const finalResponse = await fetch(this.ajaxUrl, {
+                    method: 'POST',
+                    headers: headers,
+                    body: finalPayload,
+                    credentials: 'include'
+                });
+                const finalData = await finalResponse.json();
+                if (finalData.success && finalData.data) {
+                    correctCount = finalData.data.correct_answers || correctCount;
+                    totalQuestions = finalData.data.questions.length || totalQuestions;
                 }
 
-                if (correctCount < 5) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
+                this.showNotification(`Hoàn thành Vấn Đáp. Đã trả lời thêm ${answeredThisSession} câu. Tổng số câu đúng: ${correctCount}/${totalQuestions}`, 'success');
+
+            } catch (e) {
+                console.error(`[HH3D Vấn Đáp] ❌ Lỗi xảy ra:`, e);
+                this.showNotification(`Lỗi khi thực hiện Vấn Đáp: ${e.message}`, 'error');
             }
-
-            showNotification(`Hoàn thành Vấn Đáp. Đã trả lời thêm ${answeredThisSession} câu. Tổng số câu đúng: ${correctCount}/${totalQuestions}`, 'success');
-
-        } catch (e) {
-            console.error(`[HH3D Vấn Đáp] ❌ Lỗi xảy ra:`, e);
-            showNotification(`Lỗi khi thực hiện Vấn Đáp: ${e.message}`, 'error');
         }
     }
 
@@ -513,240 +577,240 @@
     // ===============================================
 
     /**
-     * Lấy thông tin phiên đổ thạch sử dụng nonce đã lấy được.
-     * @returns {Promise<object|null>} Dữ liệu phiên hoặc null nếu có lỗi.
-     */
-    async function getDiceRollInfo(securityNonce) {
+    * Lớp quản lý tính năng Đổ Thạch (Dice Roll).
+    *
+    * Hướng dẫn sử dụng:
+    * 1. Tạo một thực thể của lớp, cung cấp các phụ thuộc cần thiết.
+    *    const doThachManager = new DoThach();
+    *
+    * 2. Gọi phương thức run với chiến lược mong muốn ('tài' hoặc 'xỉu').
+    *    await doThachManager.run('tài');
+    */
+    class DoThach {
+        constructor() {
+            this.ajaxUrl = ajaxUrl;
+            this.webUrl = weburl;
+            this.getSecurityNonce = getSecurityNonce;
+            this.showNotification = showNotification;
+            this.doThachUrl = this.webUrl + 'do-thach-hh3d';
+        }
 
-        console.log('[HH3D Đổ Thạch] ▶️ Bắt đầu lấy thông tin phiên đổ thạch...');
+        // --- Các phương thức private để gọi API và lấy nonce ---
 
-        const url = ajaxUrl;
-        const payload = new URLSearchParams();
-        payload.append('action', 'load_do_thach_data');
-        payload.append('security', securityNonce);
+        async #getLoadDataNonce() {
+            return this.getSecurityNonce(this.doThachUrl, /action: 'load_do_thach_data',\s*security: '([a-f0-9]+)'/);
+        }
 
-        const headers = {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-        };
+        async #getPlaceBetNonce() {
+            return this.getSecurityNonce(this.doThachUrl, /action: 'place_do_thach_bet',\s*security: '([a-f0-9]+)'/);
+        }
 
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: headers,
-                body: payload
-            });
-            const data = await response.json();
+        async #getClaimRewardNonce() {
+            return this.getSecurityNonce(this.doThachUrl, /action: 'claim_do_thach_reward',\s*security: '([a-f0-9]+)'/);
+        }
 
-            if (data.success) {
-                const sessionData = data.data;
-                console.log('[HH3D Đổ Thạch] ✅ Đã tải thông tin phiên đổ thạch thành công.');
-                return sessionData;
-            } else {
+        /**
+         * Lấy thông tin phiên đổ thạch hiện tại.
+         * @param {string} securityNonce - Nonce cho yêu cầu.
+         * @returns {Promise<object|null>} Dữ liệu phiên hoặc null nếu có lỗi.
+         */
+        async #getDiceRollInfo(securityNonce) {
+            console.log('[HH3D Đổ Thạch] ▶️ Đang lấy thông tin phiên...');
+            const payload = new URLSearchParams({ action: 'load_do_thach_data', security: securityNonce });
+            const headers = {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+            };
+
+            try {
+                const response = await fetch(this.ajaxUrl, { method: 'POST', headers, body: payload });
+                const data = await response.json();
+                if (data.success) {
+                    console.log('[HH3D Đổ Thạch] ✅ Tải thông tin phiên thành công.');
+                    return data.data;
+                }
                 console.error('[HH3D Đổ Thạch] ❌ Lỗi từ API:', data.data || 'Lỗi không xác định');
                 return null;
+            } catch (e) {
+                console.error('[HH3D Đổ Thạch] ❌ Lỗi mạng:', e);
+                return null;
             }
-        } catch (e) {
-            console.error('[HH3D Đổ Thạch] ❌ Lỗi mạng:', e);
-            return null;
-        }
-    }
-
-    // Hàm chính điều khiển toàn bộ logic Đổ Thạch
-    async function doDiceRoll(stoneType) {
-        console.log(`[HH3D Đổ Thạch] 🧠 Bắt đầu quy trình tự động với chiến lược: ${stoneType}...`);
-
-        // Bước 1: Lấy thông tin phiên đổ thạch
-        let securityNonce = await getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'load_do_thach_data',\s*security: '([a-f0-9]+)'/);
-        if (!securityNonce) {
-            return null;
-        }
-        const sessionData = await getDiceRollInfo(securityNonce);
-
-        // Kiểm tra xem dữ liệu có hợp lệ không
-        if (!sessionData) {
-            console.error('[HH3D Đổ Thạch] ❌ Không thể lấy dữ liệu phiên, dừng quy trình.');
-            return;
         }
 
-        let userBetCount = sessionData.stones.filter(stone => stone.bet_placed).length;
-        let userBetStones = sessionData.stones.filter(stone => stone.bet_placed);
+        /**
+         * Đặt cược vào một viên đá cụ thể.
+         * @param {object} stone - Đối tượng đá để đặt cược.
+         * @param {number} betAmount - Số tiền cược.
+         * @param {string} placeBetSecurity - Nonce để đặt cược.
+         * @returns {Promise<boolean>} True nếu đặt cược thành công.
+         */
+        async #placeBet(stone, betAmount, placeBetSecurity) {
+            console.log(`[HH3D Đặt Cược] 🪙 Đang cược ${betAmount} Tiên Ngọc vào ${stone.name}...`);
+            const payload = new URLSearchParams({
+                action: 'place_do_thach_bet',
+                security: placeBetSecurity,
+                stone_id: stone.stone_id,
+                bet_amount: betAmount
+            });
+            const headers = {
+                'Accept': '*/*',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+            };
 
-        // Bước 2: Kiểm tra trạng thái phiên để quyết định hành động
-        if (sessionData.winning_stone_id) {
-            console.log('[HH3D Đổ Thạch] 🎁 Đã có kết quả phiên. Kiểm tra để nhận thưởng...');
+            try {
+                const response = await fetch(this.ajaxUrl, { method: 'POST', headers, body: payload });
+                const data = await response.json();
+                if (data.success) {
+                    this.showNotification(`✅ Cược thành công vào ${stone.name}! Tỷ lệ x${stone.reward_multiplier}`, 'success');
+                    return true;
+                }
+                const errorMessage = data.data || data.message || 'Lỗi không xác định.';
+                this.showNotification(`❌ Lỗi cược: ${errorMessage}`, 'error');
+                return false;
+            } catch (e) {
+                this.showNotification(`❌ Lỗi mạng khi cược: ${e}`, 'error');
+                return false;
+            }
+        }
 
-            // TÌM LƯỢT CƯỢC TRÚNG NHƯNG CHƯA NHẬN THƯỞNG
-            const claimableWin = userBetStones.find(stone =>
-                stone.stone_id === sessionData.winning_stone_id && stone.reward_claimed === false
-            );
+        /**
+         * Nhận thưởng cho một lần cược thắng.
+         * @returns {Promise<boolean>} True nếu nhận thưởng thành công.
+         */
+        async #claimReward() {
+            console.log('[HH3D Nhận Thưởng] 🎁 Đang nhận thưởng...');
+            const securityNonce = await this.#getClaimRewardNonce();
+            if (!securityNonce) {
+                this.showNotification('Lỗi khi lấy nonce để nhận thưởng.', 'error');
+                return false;
+            }
+            const payload = new URLSearchParams({ action: 'claim_do_thach_reward', security: securityNonce });
+            const headers = {
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+            };
 
-            // TÌM LƯỢT CƯỢC TRÚNG VÀ ĐÃ NHẬN THƯỞNG RỒI (dựa trên gợi ý của bạn)
-            const alreadyClaimed = userBetStones.find(stone =>
-                stone.stone_id === sessionData.winning_stone_id && stone.reward_claimed === true
-            );
+            try {
+                const response = await fetch(this.ajaxUrl, { method: 'POST', headers, body: payload });
+                const data = await response.json();
+                if (data.success) {
+                    const rewardMessage = data.data?.message || `Nhận thưởng thành công!`;
+                    this.showNotification(rewardMessage, 'success');
+                    return true;
+                }
+                const errorMessage = data.data?.message || 'Lỗi không xác định khi nhận thưởng.';
+                this.showNotification(errorMessage, 'error');
+                return false;
+            } catch (e) {
+                console.error(e);
+                this.showNotification(`❌ Lỗi mạng khi nhận thưởng: ${e}`, 'error');
+                return false;
+            }
+        }
 
-            if (claimableWin) {
-                // TRƯỜNG HỢP 1: Thắng và chưa nhận thưởng -> Gọi API nhận
-                console.log(`[HH3D Đổ Thạch] 🎉 Bạn đã trúng! Đá cược: ${claimableWin.name}. Đang tiến hành nhận thưởng...`);
-                await claimReward();
+        // --- Phương thức public để chạy toàn bộ quy trình ---
 
-            } else if (alreadyClaimed) {
-                // TRƯỜNG HỢP 2: Thắng và đã nhận thưởng rồi -> Chỉ thông báo
-                console.log(`[HH3D Đổ Thạch] ✅ Bạn đã nhận thưởng rồi.`);
+        /**
+         * Chạy toàn bộ quy trình đổ thạch dựa trên chiến lược đã chọn.
+         * @param {string} stoneType - Chiến lược đặt cược ('tài' hoặc 'xỉu').
+         */
+        async run(stoneType) {
+            console.log(`[HH3D Đổ Thạch] 🧠 Bắt đầu quy trình với chiến lược: ${stoneType}...`);
 
-            } else if (userBetStones.length > 0) {
-                // TRƯỜNG HỢP 3: Có cược nhưng không trúng -> Thông báo
-                showNotification('[Đổ Thạch] 🥲 Rất tiếc, bạn đã không trúng thưởng phiên này.', 'info');
+            // Bước 1: Lấy thông tin phiên
+            const securityNonce = await this.#getLoadDataNonce();
+            if (!securityNonce) {
+                this.showNotification('Lỗi khi lấy nonce để tải dữ liệu.', 'error');
+                return;
+            }
+            const sessionData = await this.#getDiceRollInfo(securityNonce);
+
+            if (!sessionData) {
+                console.error('[HH3D Đổ Thạch] ❌ Không thể lấy dữ liệu phiên, dừng lại.');
+                return;
+            }
+
+            const userBetStones = sessionData.stones.filter(stone => stone.bet_placed);
+
+            // Bước 2: Kiểm tra trạng thái phiên và hành động (nhận thưởng hoặc đặt cược)
+            if (sessionData.winning_stone_id) {
+                console.log('[HH3D Đổ Thạch] 🎁 Đã có kết quả. Kiểm tra nhận thưởng...');
+                const claimableWin = userBetStones.find(s => s.stone_id === sessionData.winning_stone_id && !s.reward_claimed);
+                const alreadyClaimed = userBetStones.find(s => s.stone_id === sessionData.winning_stone_id && s.reward_claimed);
+
+                if (claimableWin) {
+                    console.log(`[HH3D Đổ Thạch] 🎉 Trúng rồi! Đá cược: ${claimableWin.name}. Đang nhận thưởng...`);
+                    await this.#claimReward();
+                } else if (alreadyClaimed) {
+                    console.log(`[HH3D Đổ Thạch] ✅ Đã nhận thưởng cho phiên này.`);
+                } else if (userBetStones.length > 0) {
+                    this.showNotification('[Đổ Thạch] 🥲 Rất tiếc, bạn không trúng phiên này.', 'info');
+                } else {
+                    this.showNotification('[Đổ Thạch] 😶 Bạn không tham gia phiên này.', 'info');
+                }
+                return;
+            }
+
+            // Bước 3: Nếu đang trong giờ cược, tiến hành đặt cược
+            console.log('[HH3D Đổ Thạch] 💰 Đang trong thời gian đặt cược.');
+            const userBetCount = userBetStones.length;
+
+            if (userBetCount >= 2) {
+                this.showNotification('[HH3D Đổ Thạch] ⚠️ Đã cược đủ 2 lần. Chờ phiên sau.', 'warn');
+                taskTracker.updateTask(accountId, 'dothach', 'betplaced', true);
+                return;
+            }
+
+            const sortedStones = [...sessionData.stones].sort((a, b) => b.reward_multiplier - a.reward_multiplier);
+            const availableStones = sortedStones.filter(stone => !stone.bet_placed);
+
+            if (availableStones.length === 0) {
+                this.showNotification('[HH3D Đổ Thạch] ⚠️ Không còn đá nào để cược!', 'warn');
+                return;
+            }
+
+            const betAmount = 20;
+            const stonesToBet = [];
+            const normalizedStoneType = stoneType.toLowerCase();
+            const betsRemaining = 2 - userBetCount;
+
+            if (normalizedStoneType === 'tài' || normalizedStoneType === 'tai') {
+                stonesToBet.push(...availableStones.slice(0, betsRemaining));
+            } else if (normalizedStoneType === 'xỉu' || normalizedStoneType === 'xiu') {
+                const xiuStones = availableStones.slice(2, 4);
+                stonesToBet.push(...xiuStones.slice(0, betsRemaining));
             } else {
-                // TRƯỜNG HỢP 4: Không cược -> Thông báo
-                showNotification('[Đổ Thạch] 😶 Bạn đã không tham gia phiên này.', 'info');
+                console.log('[HH3D Đổ Thạch] ❌ Chiến lược không hợp lệ. Vui lòng chọn "tài" hoặc "xỉu".');
+                return;
             }
 
-            return;
-        }
-
-        // Bước 3: Nếu không phải giờ nhận thưởng, tiến hành đặt cược
-        console.log('[HH3D Đổ Thạch] 💰 Đang trong thời gian đặt cược.');
-
-        if (userBetCount >= 2) {
-            showNotification('[HH3D Đổ Thạch] ⚠️ Đã đạt giới hạn cược (2 lần). Vui lòng chờ phiên sau.', 'warn');
-            return;
-        }
-
-        const sortedStones = sessionData.stones.sort((a, b) => b.reward_multiplier - a.reward_multiplier);
-        const availableStones = sortedStones.filter(stone => !stone.bet_placed);
-
-        if (availableStones.length === 0) {
-            showNotification('[HH3D Đổ Thạch] ⚠️ Không còn đá nào để đặt cược!', 'warn');
-            return;
-        }
-
-        const betAmount = 20; // Số tiền đặt cược cố định
-        const stonesToBet = [];
-
-        if (stoneType === 'tài' || stoneType === 'tai') {
-            const firstStone = availableStones[0];
-            const secondStone = availableStones[1];
-            if (firstStone) stonesToBet.push(firstStone);
-            if (secondStone) stonesToBet.push(secondStone);
-        } else if (stoneType === 'xỉu' || stoneType === 'xiu') {
-            if (availableStones.length >= 4) {
-                const thirdStone = availableStones[2];
-                const fourthStone = availableStones[3];
-                if (thirdStone) stonesToBet.push(thirdStone);
-                if (fourthStone) stonesToBet.push(fourthStone);
-            } else {
-                console.log('[HH3D Đổ Thạch] ⚠️ Không đủ đá để đặt cược "Xỉu".');
+            if (stonesToBet.length === 0) {
+                console.log('[HH3D Đổ Thạch] ⚠️ Không có đá nào phù hợp chiến lược hoặc đã cược đủ.');
+                return;
             }
-        } else {
-            console.log('[HH3D Đổ Thạch] ❌ Chiến lược đặt cược không hợp lệ. Vui lòng chọn "tài" hoặc "xỉu".');
-            return;
-        }
 
-        const placeBetSecurity = await getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'place_do_thach_bet',\s*security: '([a-f0-9]+)'/);
-        if (!placeBetSecurity) {
-            showNotification('Lỗi khi lấy security nonce để đặt cược.', 'error');
-            return;
-        }
-        if (stonesToBet.length > 0) {
+            const placeBetSecurity = await this.#getPlaceBetNonce();
+            if (!placeBetSecurity) {
+                this.showNotification('Lỗi khi lấy nonce để đặt cược.', 'error');
+                return;
+            }
+
+            let successfulBets = 0;
             for (const stone of stonesToBet) {
-                console.log(`[HH3D Đổ Thạch] 🪙 Chuẩn bị đặt cược ${betAmount} Tiên Ngọc vào đá "${stone.name}" (ID: ${stone.stone_id})...`);
-                await placeBet(stone, betAmount, placeBetSecurity);
+                const success = await this.#placeBet(stone, betAmount, placeBetSecurity);
+                if (success) {
+                    successfulBets++;
+                }
             }
-        } else {
-            console.log('[HH3D Đổ Thạch] ⚠️ Không có đá nào được chọn để đặt cược.');
+
+            // Kiểm tra và cập nhật trạng thái ngay sau khi cược
+            if (userBetCount + successfulBets >= 2) {
+                taskTracker.updateTask(accountId, 'dothach', 'betplaced', true);
+            }
         }
     }
-
-    /**
-     * Gửi yêu cầu đặt cược đến server.
-     * @param {object} stone - Đối tượng đá chứa thông tin cần thiết để đặt cược.
-     * @param {number} betAmount - Số tiền (Tiên Ngọc) muốn đặt cược.
-     * @returns {Promise<boolean>} True nếu đặt cược thành công, ngược lại là False.
-     */
-    async function placeBet(stone, betAmount, placeBetSecurity) {
-        console.log(`[HH3D Đặt Cược] 🪙 Đang tiến hành đặt cược ${betAmount} Tiên Ngọc vào ${stone.name}...`);
-
-        const url = ajaxUrl;
-        const payload = new URLSearchParams();
-
-        payload.append('action', 'place_do_thach_bet');
-        payload.append('security', placeBetSecurity);
-        payload.append('stone_id', stone.stone_id);
-        payload.append('bet_amount', betAmount);
-
-        const headers = {
-            'Accept': '*/*', // <--- Đã thêm header này
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-        };
-
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: headers,
-                body: payload
-            });
-            const data = await response.json();
-
-            if (data.success) {
-                showNotification(`✅ Đặt cược thành công vào ${stone.name}! Tỷ lệ x${stone.reward_multiplier}`, 'success');
-                return true;
-            } else {
-                const errorMessage = data.data || data.message || 'Lỗi không xác định từ server.';
-                showNotification(`❌ Lỗi đặt cược đổ thạch: ${errorMessage}`, 'error');
-                return false;
-            }
-        } catch (e) {
-            showNotification(`❌ Lỗi mạng khi đặt cược đổ thạch: ${e}`, 'error');
-            return false;
-        }
-    }
-
-    // Hàm nhận thưởng sau khi đã trúng
-    async function claimReward() {
-        console.log('[HH3D Nhận Thưởng] 🎁 Đang tiến hành nhận thưởng...');
-
-        const url = ajaxUrl;
-        const payload = new URLSearchParams();
-        const securityNonce = await getSecurityNonce(weburl + 'do-thach-hh3d', /action: 'claim_do_thach_reward',\s*security: '([a-f0-9]+)'/);
-        if (!securityNonce) {
-            showNotification('Lỗi khi lấy security nonce để nhận thưởng.', 'error');
-            return false;
-        }
-        payload.append('action', 'claim_do_thach_reward');
-        payload.append('security', securityNonce);
-
-        const headers = {
-            'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-        };
-
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: headers,
-                body: payload
-            });
-            const data = await response.json();
-
-            if (data.success) {
-                const rewardMessage = data.data && data.data.message ? data.data.message : `Nhận thưởng thành công!`;
-                showNotification(rewardMessage, 'success');
-                return true;
-            } else {
-                const errorMessage = data.data && data.data.message ? data.data.message : 'Lỗi không xác định khi nhận thưởng.';
-                showNotification(errorMessage, 'error');
-                return false;
-            }
-        } catch (e) {
-            console.error(e);
-            return false;
-        }
-    }
-
     // ===============================================
     // THÍ LUYỆN TÔNG MÔN
     // ===============================================
@@ -785,13 +849,7 @@
             if (data.success) {
                 // Trường hợp thành công
                 const message = data.data && data.data.message ? data.data.message : 'Mở rương thành công!';
-                console.log(`[Thí Luyện Tông Môn] ✅ ${message}`);
-                // Show thông báo chi tiết nếu có
-                if (data.data.tinh_thach) {
-                    showNotification(`[Thí Luyện] Đã nhận được ${data.data.tinh_thach} Tinh Thạch!`, 'success');
-                } else {
-                    showNotification(message, 'success');
-                }
+                showNotification(message, 'success');
             } else {
                 // Trường hợp thất bại
                 if (data.data.message === "Đã hoàn thành Thí Luyện Tông Môn hôm nay, quay lại vào ngày kế tiếp.") {
@@ -801,6 +859,17 @@
                     showNotification(data.data.message, 'error');
                 }
             }
+
+            const timeResponse = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: `action=get_remaining_time_tltm&security=${securityNonce}`,
+                credentials: 'include'
+            });
+            if (timeResponse.success) {
+                taskTracker.adjustTaskTime(accountId, 'thiluyen', timePlus(timeResponse.data.remaining_time));
+            }
+
         } catch (e) {
             showNotification('Lỗi mạng khi thực hiện Thí Luyện Tông Môn.', 'error');
         }
@@ -870,6 +939,9 @@
                     if (dataOpen.success) {
                         const message = dataOpen.data && dataOpen.data.message ? dataOpen.data.message : 'Mở rương thành công!';
                         showNotification(message, 'success');
+                        if (message.includes('đã hoàn thành Phúc Lợi ngày hôm nay')) {
+                            taskTracker.markTaskDone(accountId, 'phucloi');
+                        }
                     } else {
                         const errorMessage = dataOpen.data && dataOpen.data.message ? dataOpen.data.message : 'Lỗi không xác định khi mở rương.';
                         showNotification(errorMessage, 'error');
@@ -911,7 +983,7 @@
                 return;
             }
 
-            // Bước 2: Kiểm tra thời gian hồi chiêu
+            // Bước 2: Kiểm tra thời gian hồi
             const canAttack = await this.checkAttackCooldown(nonce);
             if (!canAttack) {
                 return;
@@ -946,9 +1018,15 @@
             try {
                 const response = await this.sendApiRequest(endpoint, 'POST', nonce, {});
                 if (response && response.success && response.can_attack) {
+                    if (response.remaining_attacks === 5) {
+                        const rewardResponse = await this.sendApiRequest('wp-json/tong-mon/v1/claim-boss-reward', 'POST', nonce, {});
+                        if (rewardResponse && rewardResponse.success) {
+                            showNotification(rewardResponse.message, 'success');
+                        }
+                    }
                     console.log(`${this.logPrefix} ✅ Có thể tấn công.`);
                     return true;
-                } 
+                }
                 // Kiểm tra trường hợp boss chết: Nhận thưởng và hiến tế
                 else if (response.success && response.message === 'Không có boss để tấn công') {
                     const rewardResponse = await this.sendApiRequest('wp-json/tong-mon/v1/claim-boss-reward', 'POST', nonce, {});
@@ -1002,7 +1080,7 @@
         /**  Kiểm tra xem có đạt giới hạn tấn công hàng ngày hay không.
          * @returns {Promise<boolean>} True nếu đạt giới hạn, ngược lại là false.
          * */
-        async  isDailyLimit() {
+        async isDailyLimit() {
             const endpoint = 'wp-json/tong-mon/v1/check-attack-cooldown';
             const nonce = await this.getNonce();
             if (!nonce) {
@@ -1020,6 +1098,8 @@
                 return false;
             }
         }
+
+
         /**
          * Hàm trợ giúp để gửi yêu cầu API.
          * @param {string} endpoint - Điểm cuối API.
@@ -1313,10 +1393,10 @@
                 if (bossInfoData.success) {
                     const boss = bossInfoData.data;
 
-                    if (boss.defeated_time !== null && boss.has_pending_rewards) {
+                    if (boss.has_pending_rewards) {
                         await this.claimHoangVucRewards(nonce);
                         return;
-                    } else if (boss.created_time === new Date().toISOString().slice(0, 10) && boss.health === boss.max_health) {
+                    } else if (boss.created_date === new Date().toISOString().slice(0, 10) && boss.health === boss.max_health) {
                         showNotification('Boss Hoang vực đã bị phong ấn', 'info');
                         return;
                     }
@@ -1353,10 +1433,10 @@
 
                     if (nextAttackTime.success && Date.now() >= nextAttackTime.data) {
                         // Thực hiện tấn công boss Hoang Vực, nếu thành công và còn 1 lượt tấn công thì đánh dấu nhiệm vụ hoàn thành
-                        if (await this.attackHoangVucBoss(boss.id, nonce) && this.remainingAttacks === 1) {
+                        if (await this.attackHoangVucBoss(boss.id, nonce) && this.remainingAttacks <= 1) {
                             taskTracker.markTaskDone(accountId, 'hoangvuc');
                         }
-                        
+
                     } else {
                         const remainingTime = nextAttackTime.data - Date.now();
                         const remainingSeconds = Math.floor(remainingTime / 1000);
@@ -1489,7 +1569,7 @@
                 const approveResult = await this.sendApiRequest(approveEndpoint, 'POST', nonce, approveBody);
 
                 if (approveResult && approveResult.success) {
-                    showNotification(`[Luận võ]${approveResult.data.message}!`, 'success');
+                    showNotification(`[Luận võ] ${approveResult.data.message}!`, 'success');
                     return true;
                 } else {
                     const message = approveResult?.data?.message || 'Lỗi không xác định khi hoàn tất trận đấu.';
@@ -1566,19 +1646,23 @@
             }
 
             // Bước 2: Tham gia trận đấu
-            const joinResult = await this.sendApiRequest(
-                'wp-json/luan-vo/v1/join-battle', 'POST', nonce, {}
-            );
-            console.log(`${this.logPrefix} ✅ Tham gia trận đấu thành công.`);
-
-            // Bước 3: Đảm bảo tự động chấp nhận khiêu chiến
-            const autoAcceptSuccess = await this.ensureAutoAccept(nonce);
-            if (!autoAcceptSuccess) {
-                showNotification('⚠️ Tham gia thành công nhưng không thể bật tự động chấp nhận.', 'warning');
-            } else {
-                console.log(`${this.logPrefix} ✅ Tự động chấp nhận đã được bật.`);
+            if (!taskTracker.getTaskStatus(accountId, 'luanvo').battle_joined){
+                const joinResult = await this.sendApiRequest(
+                    'wp-json/luan-vo/v1/join-battle', 'POST', nonce, {}
+                );
+            console.log(`✅ Tham gia luận võ thành công.`);
             }
 
+
+            // Bước 3: Đảm bảo tự động chấp nhận khiêu chiến
+            if (!taskTracker.getTaskStatus(accountId, 'luanvo').auto_accept){
+                const autoAcceptSuccess = await this.ensureAutoAccept(nonce);
+                if (!autoAcceptSuccess) {
+                    showNotification('⚠️ Tham gia thành công nhưng không thể bật tự động chấp nhận.', 'warning');
+                } else {
+                    console.log(`${this.logPrefix} ✅ Tự động chấp nhận đã được bật.`);
+                }
+            }
             // Bước 4: Khiêu chiến người chơi
             if (!autoChallenge) {
                 //Hiện hộp thoại thông báo để người chơi tới trang luận võ thủ công
@@ -1593,24 +1677,29 @@
             let users = [];
 
             do {
-                // Lấy danh sách following
                 users = await this.getFollowingUsers(nonce);
+                let myCanSend = users[0]?.can_send_count ?? 0;
+
                 if (!users || users.length === 0) {
-                    showNotification('ℹ️ Bạn chưa theo dõi ai để khiêu chiến.', 'info');
+                    showNotification('ℹ️ Bạn chưa có ai để khiêu chiến.', 'info');
                     break;
                 }
-                // Lấy can_send_count từ user đầu tiên
-                myCanSend = users[0]?.can_send_count ?? 0;
+
                 for (const user of users) {
-                    if (myCanSend <= 0) break; // hết lượt thì thoát
-                    if (user.challenges_remaining > 0) {
-                        const challengeSuccess = await this.sendChallenge(user.id, nonce);
-                        if (challengeSuccess) {
+                    // gửi liên tục cho user hiện tại đến khi họ hết lượt hoặc bạn hết lượt
+                    while (myCanSend > 0 && user.challenges_remaining > 0) {
+                        const success = await this.sendChallenge(user.id, nonce);
+                        if (success) {
                             challengesSent++;
-                            await this.delay(4000); // delay 4s
+                            myCanSend--;
+                            await this.delay(4000); // delay giữa các lượt
+                        } else {
+                            // nếu gửi thất bại, thoát vòng while user này
+                            break;
                         }
                     }
                 }
+
             } while (myCanSend > 0);
 
             showNotification(`✅ Hoàn thành! Đã gửi ${challengesSent} khiêu chiến.`, 'success');
@@ -1619,6 +1708,272 @@
             const rewardResult = await this.receiveReward(nonce);
         }
     }
+
+    class KhoangMach {
+        constructor() {
+            this.ajaxUrl = ajaxUrl;
+            this.khoangMachUrl = weburl + 'khoang-mach';
+            this.logPrefix = '[Khoáng Mạch]';
+            this.headers = {
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest",
+            };
+        }
+
+        async #getNonce(regex) {
+            return getSecurityNonce(this.khoangMachUrl, regex);
+        }
+
+        async loadMines(mineType) {
+            const nonce = await getSecurityNonce(this.khoangMachUrl, /action:\s*'load_mines_by_type',\s*mine_type:\s*mineType,\s*security:\s*'([a-f0-9]+)'/);
+            if (!nonce) { showNotification('Lỗi nonce (load_mines).', 'error'); return null; }
+            const payload = new URLSearchParams({ action: 'load_mines_by_type', mine_type: mineType, security: nonce });
+            try {
+                const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
+                const d = await r.json();
+                return d.success ? d.data : (showNotification(d.message || 'Lỗi tải mỏ.', 'error'), null);
+            } catch (e) { console.error(`${this.logPrefix} ❌ Lỗi mạng (tải mỏ):`, e); return null; }
+        };
+
+        async getAllMines() {
+            // Lưu trữ thông tin của các loại mỏ
+            const mineTypes = ['gold', 'silver', 'copper'];
+            const allMines = [];
+
+            // Lặp qua từng loại mỏ để tải dữ liệu
+            for (const type of mineTypes) {
+                const mines = await this.loadMines(type);
+                if (mines) {
+                    mines.forEach(mine => {
+                        mine.type = type;
+                        allMines.push(mine);
+                    });
+                }
+            }
+
+            // Sắp xếp mảng allMines
+            allMines.sort((a, b) => {
+                const typeOrder = { 'gold': 1, 'silver': 2, 'copper': 3 };
+                const typeComparison = typeOrder[a.type] - typeOrder[b.type];
+
+                if (typeComparison === 0) {
+                    return a.name.localeCompare(b.name, 'vi', { sensitivity: 'base' });
+                }
+
+                return typeComparison;
+            });
+
+            // Tạo mảng chuỗi HTML với định dạng mong muốn
+            const mineOptionsHtml = allMines.map(mine => {
+                let typePrefix = '';
+                if (mine.type === 'gold') {
+                    typePrefix = '[Thượng] ';
+                } else if (mine.type === 'silver') {
+                    typePrefix = '[Trung] ';
+                } else if (mine.type === 'copper') {
+                    typePrefix = '[Hạ] ';
+                }
+                return `<option value="${mine.id}">${typePrefix}${mine.name} (${mine.id})</option>`;
+            }).join('');
+
+            // --- ĐÂY LÀ PHẦN THAY ĐỔI QUAN TRỌNG ---
+            // Trả về một đối tượng chứa cả chuỗi HTML và mảng dữ liệu gốc
+            return {
+                optionsHtml: mineOptionsHtml,
+                minesData: allMines
+            };
+        }
+        async enterMine(mineId) {
+            const nonce1 = await this.#getNonce(/action: 'enter_mine',\s*mine_id:\s*mine_id,\s*security: '([a-f0-9]+)'/);
+            const nonce2 = await this.#getNonce(/var security_km = '([a-f0-9]+)'/);
+            if (!nonce1 || !nonce2) {
+                showNotification('Lỗi nonce (enter_mine).', 'error');
+                return false;
+            }
+            const payload = new URLSearchParams({ action: 'enter_mine', mine_id: mineId, security: nonce1, security_km: nonce2 });
+            try {
+                const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
+                const d = await r.json();
+                if (d.success) {
+                    showNotification(d.data.message, 'success');
+                    return true;
+                } else {
+                    showNotification(d.message || 'Lỗi vào mỏ.', 'error');
+                    return false;
+                }
+            } catch (e) {
+                console.error(`${this.logPrefix} ❌ Lỗi mạng (vào mỏ):`, e);
+                return false;
+            }
+        }
+
+        async getUsersInMine(mineId) {
+            const nonce = await this.#getNonce(/action: 'get_users_in_mine',\s*mine_id:\s*mine_id,\s*security: '([a-f0-9]+)'/);
+            if (!nonce) { showNotification('Lỗi nonce (get_users).', 'error'); return null; }
+            const payload = new URLSearchParams({ action: 'get_users_in_mine', mine_id: mineId, security: nonce });
+            try {
+                const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
+                const d = await r.json();
+                return d.success ? d.data : (showNotification(d.message || 'Lỗi lấy thông tin người chơi.', 'error'), null);
+            } catch (e) { console.error(`${this.logPrefix} ❌ Lỗi mạng (lấy user):`, e); return null; }
+        }
+        
+        async takeOverMine(mineId) {
+            const nonce = await this.#getNonce(/action: 'change_mine_owner',\s*mine_id:\s*mineId,\s*security: '([a-f0-9]+)'/);
+            if (!nonce) { showNotification('Lỗi nonce (take_over).', 'error'); return false; }
+            const payload = new URLSearchParams({ action: 'change_mine_owner', mine_id: mineId, security: nonce });
+            try {
+                const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
+                const d = await r.json();
+                if (d.success) {
+                    showNotification(d.data.message, 'success');
+                    return true;
+                } else {
+                    showNotification(d.message || 'Lỗi đoạt mỏ.', 'error');
+                    return false;
+                }
+            } catch (e) { console.error(`${this.logPrefix} ❌ Lỗi mạng (đoạt mỏ):`, e); return false; }
+        }
+
+        async buyBuffItem() {
+            const nonce = await this.#getNonce(/action: 'buy_item_khoang',\s*security: '([a-f0-9]+)'/);
+            if (!nonce) { showNotification('Lỗi nonce (buy_item).', 'error'); return false; }
+            const payload = new URLSearchParams({ action: 'buy_item_khoang', security: nonce, item_id: 4 });
+            try {
+                const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
+                const d = await r.json();
+                if (d.success) {
+                    showNotification(d.message, 'success');
+                    return true;
+                } else {
+                    showNotification(d.message || 'Lỗi mua vật phẩm.', 'error');
+                    return false;
+                }
+            } catch (e) { console.error(`${this.logPrefix} ❌ Lỗi mạng (mua buff):`, e); return false; }
+        }
+
+        async claimReward(mineId) {
+            const nonce = await this.#getNonce(/action: 'claim_mycred_reward',\s*mine_id:\s*mineId,\s*security: '([a-f0-9]+)'/);
+            if (!nonce) { showNotification('Lỗi nonce (claim_reward).', 'error'); return false; }
+            const payload = new URLSearchParams({ action: 'claim_mycred_reward', mine_id: mineId, security: nonce });
+            try {
+                const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
+                const d = await r.json();
+                if (d.success) {
+                    showNotification(d.data.message, 'success');
+                    return true;
+                } else {
+                    showNotification(d.message || 'Lỗi nhận thưởng.', 'error');
+                    return false;
+                }
+            } catch (e) { console.error(`${this.logPrefix} ❌ Lỗi mạng (nhận thưởng):`, e); return false; }
+        }
+
+        async doKhoangMach() {
+            const selectedMineSetting = localStorage.getItem('khoangmach_selected_mine');
+            if (!selectedMineSetting) {
+                showNotification('Vui lòng chọn một mỏ trong cài đặt.', 'error');
+                return;
+            }
+
+            const selectedMineInfo = JSON.parse(selectedMineSetting);
+            if (!selectedMineInfo || !selectedMineInfo.id || !selectedMineInfo.type) {
+                showNotification('Cài đặt mỏ không hợp lệ.', 'error');
+                return;
+            }
+
+            const useBuff = localStorage.getItem('khoangmach_use_buff') === 'true';
+            const autoTakeover = localStorage.getItem('khoangmach_auto_takeover') === 'true';
+            const rewardMode = localStorage.getItem('khoangmach_reward_mode');
+
+            console.log(`${this.logPrefix} Bắt đầu quy trình cho mỏ ID: ${selectedMineInfo.id}.`);
+            const mines = await this.loadMines(selectedMineInfo.type);
+            if (!mines) return;
+
+            const targetMine = mines.find(m => m.id === selectedMineInfo.id);
+            if (!targetMine) {
+                showNotification('Không tìm thấy mỏ đã chọn trong danh sách tải về.', 'error');
+                return;
+            }
+            if (!targetMine.is_current) {
+                if (parseInt(targetMine.user_count) >= parseInt(targetMine.max_users)) {
+                    showNotification('Mỏ đã đầy. Không vào được.', 'warn');
+                    return;
+                } else {
+                    if (!await this.enterMine(targetMine.id)) {
+                        return;
+                    }
+                }
+            }
+
+            // Bắt đầu vòng lặp để kiểm tra và thực hiện tác vụ liên tục
+            while (true) {
+                // Kiểm tra thông tin trong mỏ
+                let usersInfo = await this.getUsersInMine(targetMine.id);
+                if (!usersInfo) return;
+                const users = usersInfo.users || [];
+                if (users.length === 0) {
+                    console.log(`[Khoáng mạch] Mỏ ${targetMine.id} trống.`);
+                    return;
+                }
+
+                let myIndex = users.findIndex(u => u.id.toString() === accountId.toString());
+                if (myIndex === -1) {
+                    console.log(`[Khoáng mạch] Kiểm tra vị trí. Bạn chưa vào mỏ ${targetMine.name}.`);
+                    return;
+                }
+
+                let myInfo = users[myIndex];
+                console.log(`[Khoáng mạch] Vị trí: ${myIndex}, Tên: ${myInfo.name}, Time: ${myInfo.time_spent}`);
+
+                if (myInfo.time_spent !== "Đạt tối đa") {
+                    console.log(`[Khoáng mạch] Chưa đạt tối đa, thoát vòng lặp.`);
+                    // Có thể thêm delay để tránh spam server
+                    break;
+                }
+
+                let bonus = usersInfo.bonus_percentage || 0;
+                let canClaim = false;
+                if (rewardMode === "any") {
+                    canClaim = true;
+                } else if (rewardMode === ">0" && bonus > 0) {
+                    canClaim = true;
+                } else if (rewardMode === ">50" && bonus > 50) {
+                    canClaim = true;
+                }
+
+                if (canClaim) {
+                    console.log(`[Khoáng mạch] Nhận thưởng tại mỏ ${targetMine.id}, bonus=${bonus}%`);
+                    await this.claimReward(targetMine.id);
+                    break; // Thoát vòng lặp sau khi nhận thưởng
+                } else {
+                    console.log(`[Khoáng mạch] Bonus tu vi ${bonus}% chưa đạt ngưỡng ${rewardMode}`);
+                    
+                    // Nếu có thể, thử takeover trước
+                    if (autoTakeover && usersInfo.can_takeover) {
+                        console.log(`[Khoáng mạch] Thử đoạt mỏ ${targetMine.id}...`);
+                        await this.takeOverMine(targetMine.id);
+                    }
+
+                    // Nếu không thể takeover và có bật buff
+                    if (useBuff && bonus > 0) {
+                        console.log(`[Khoáng mạch] Mua linh quang phù...`);
+                        await this.buyBuffItem(targetMine.id);
+                        // Đợi một chút để server xử lý
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        continue;
+                    }
+
+                    // Nếu không thể làm gì, thoát khỏi vòng lặp
+                    console.log(`[Khoáng mạch] Không thể thực hiện thêm hành động nào. Thoát vòng lặp.`);
+                    break;
+                }
+            }
+        }
+    }
+
+
+
 
     // ===============================================
     // HÀM HIỂN THỊ THÔNG BÁO
@@ -1740,7 +2095,7 @@
     // ===============================================
 
     // Hàm tạo menu đổ thạch
-    function createDiceRollMenu(parentGroup) {
+    async function createDiceRollMenu(parentGroup) {
         // Thêm lớp dice-roll-group cho phần tử cha
         parentGroup.classList.add('custom-script-dice-roll-group');
 
@@ -1762,17 +2117,28 @@
         rollButton.textContent = 'Đổ Thạch';
         rollButton.classList.add('custom-script-menu-button', 'custom-script-dice-roll-btn'); // Thêm lớp CSS cho nút
 
-        rollButton.addEventListener('click', () => {
+        rollButton.addEventListener('click', async () => {
             const selectedChoice = select.value;
-            doDiceRoll(selectedChoice);
+            await dothach.run(selectedChoice);
+            const currentTime = new Date();
+            const currentHour = currentTime.getHours();
+            const isBetTime = (currentHour >= 6 && currentHour < 13) || (currentHour >= 16 && currentHour < 21);
+            if (taskTracker.getTaskStatus(accountId, 'dothach').betplaced && isBetTime) {
+                rollButton.disabled = true
+            }
         });
-
+        const currentTime = new Date();
+        const currentHour = currentTime.getHours();
+        const isBetTime = (currentHour >= 6 && currentHour < 13) || (currentHour >= 16 && currentHour < 21);
+        if (taskTracker.getTaskStatus(accountId, 'dothach').betplaced && isBetTime) {
+            rollButton.disabled = true
+        }
         parentGroup.appendChild(select);
         parentGroup.appendChild(rollButton);
     }
 
     //Hàm tạo menu hoang vực
-    const hoangvuc = new HoangVuc();
+
     function createHoangVucMenu(parentGroup) {
             // --- Nút chính "Hoang Vực" ---
             const hoangVucButton = document.createElement('button');
@@ -1782,7 +2148,7 @@
                 console.log('[HH3D Hoang Vực] 🖱️ Nút Hoang vực vừa được nhấn');
                 const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
                 console.log(`[HH3D Hoang Vực] Chế độ Tối đa hoá sát thương: ${maximizeDamage ? 'Bật' : 'Tắt'}`);
-                
+
                 hoangVucButton.disabled = true;
                 hoangVucButton.textContent = 'Đang xử lý...';
 
@@ -1835,7 +2201,7 @@
         }
 
     //Hàm tạo menu Luận Võ
-    const luanVo = new LuanVo();
+
     async function createLuanVoMenu(parentGroup) {
         const luanVoButton = document.createElement('button');
         const luanVoSettingsButton = document.createElement('button');
@@ -1881,7 +2247,7 @@
             try {
                 // Lấy lại giá trị từ localStorage ngay trước khi gọi hàm, để đảm bảo chính xác
                 const currentAutoChallenge = localStorage.getItem('luanVoAutoChallenge') === '1';
-                await luanVo.startLuanVo(currentAutoChallenge);
+                await luanvo.startLuanVo(currentAutoChallenge);
             } catch (error) {
                 console.error('[HH3D Luận Võ] ❌ Lỗi trong quá trình Luận Võ:', error);
                 showNotification('❌ Lỗi trong quá trình Luận Võ.', 'error');
@@ -1904,7 +2270,6 @@
     }
 
     // Hàm tạo nút bí cảnh
-    const bicanh = new BiCanh();
     async function createBiCanhMenu(parentGroup) {
         const biCanhButton = document.createElement('button');
         biCanhButton.textContent = 'Bí Cảnh';
@@ -1931,9 +2296,161 @@
         });
         parentGroup.appendChild(biCanhButton);
         if (await bicanh.isDailyLimit()) {
-                                    biCanhButton.disabled = true;
-                                    biCanhButton.textContent = 'Bí Cảnh ✅';
+            biCanhButton.disabled = true;
+            biCanhButton.textContent = 'Bí Cảnh ✅';
         }
+    }
+
+    // Hàm tạo menu khoáng mạch
+    async function createKhoangMachMenu(parentGroup) {
+        // Nhận cả hai giá trị từ hàm getAllMines()
+        const { optionsHtml, minesData } = await khoangmach.getAllMines();
+
+        const khoangMachButton = document.createElement('button');
+        const khoangMachSettingsButton = document.createElement('button');
+        khoangMachSettingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
+        
+        const configDiv = document.createElement('div');
+        configDiv.style.display = 'none';
+        configDiv.classList.add('custom-script-settings-panel');
+        
+        configDiv.innerHTML = `
+            <div class="custom-script-khoang-mach-config-group">
+                <label for="specificMineSelect">Chọn Khoáng Mạch:</label>
+                <select id="specificMineSelect">${optionsHtml}</select>
+            </div>
+            <div class="custom-script-khoang-mach-config-group">
+                <label for="rewardModeSelect">Chế độ Nhận Thưởng:</label>
+                <select id="rewardModeSelect">
+                    <option value=">50">Thưởng thêm > 50%</option>
+                    <option value=">0">Thưởng thêm > 0%</option>
+                    <option value="any">Bất kỳ</option>
+                </select>
+            </div>
+            <div class="custom-script-khoang-mach-config-group checkbox-group">
+                <input type="checkbox" id="autoTakeOver">
+                <label for="autoTakeOver">Tự động đoạt mỏ</label>
+            </div>
+            <div class="custom-script-khoang-mach-config-group checkbox-group">
+                <input type="checkbox" id="autoBuff">
+                <label for="autoBuff">Tự động mua Linh Quang Phù</label>
+            </div>
+        `;
+
+        const buttonGroup = document.createElement('div');
+        buttonGroup.classList.add('custom-script-menu-group');
+        buttonGroup.appendChild(khoangMachSettingsButton);
+        buttonGroup.appendChild(khoangMachButton);
+
+        parentGroup.appendChild(buttonGroup);
+        parentGroup.appendChild(configDiv);
+
+        let settingsOpen = false;
+        const specificMineSelect = configDiv.querySelector('#specificMineSelect');
+        const rewardModeSelect = configDiv.querySelector('#rewardModeSelect');
+        const autoTakeOverCheckbox = configDiv.querySelector('#autoTakeOver');
+        const autoBuffCheckbox = configDiv.querySelector('#autoBuff');
+
+        // Khôi phục giá trị từ localStorage
+        const savedMineSetting = localStorage.getItem('khoangmach_selected_mine');
+        if (savedMineSetting) {
+            try {
+                const mineInfo = JSON.parse(savedMineSetting);
+                if (mineInfo && mineInfo.id) {
+                    specificMineSelect.value = mineInfo.id;
+                }
+            } catch (error) {
+                console.error('[Khoáng Mạch] Lỗi phân tích JSON từ localStorage:', error);
+                localStorage.removeItem('khoangmach_selected_mine');
+            }
+        }
+        rewardModeSelect.value = localStorage.getItem('khoangmach_reward_mode') || 'any';
+        autoTakeOverCheckbox.checked = localStorage.getItem('khoangmach_auto_takeover') === 'true';
+        autoBuffCheckbox.checked = localStorage.getItem('khoangmach_use_buff') === 'true';
+        
+        const updateSettingsButtonState = () => {
+            khoangMachSettingsButton.textContent = settingsOpen ? '⚙️' : '⚙️';
+            khoangMachSettingsButton.title = settingsOpen ? 'Đóng cài đặt Khoáng Mạch' : 'Mở cài đặt Khoáng Mạch';
+        };
+
+        updateSettingsButtonState();
+
+        khoangMachSettingsButton.addEventListener('click', () => {
+            settingsOpen = !settingsOpen;
+            configDiv.style.display = settingsOpen ? 'block' : 'none';
+            updateSettingsButtonState();
+        });
+
+        specificMineSelect.addEventListener('change', (e) => {
+            const selectedId = e.target.value;
+            const selectedOptionText = e.target.options[e.target.selectedIndex].text;
+            
+            // Tìm kiếm mỏ đã chọn trong mảng dữ liệu thô
+            const selectedMine = minesData.find(mine => mine.id === selectedId);
+
+            if (selectedMine && selectedMine.type) {
+                localStorage.setItem('khoangmach_selected_mine', JSON.stringify({ id: selectedId, type: selectedMine.type }));
+                showNotification(`[Khoáng Mạch] Đã chọn mỏ: ${selectedOptionText}`, 'info');
+            } else {
+                console.error(`[Khoáng Mạch] Không tìm thấy thông tin type cho mỏ ID: ${selectedId}`);
+                showNotification('Lỗi: Không tìm thấy thông tin mỏ. Vui lòng chọn lại.', 'error');
+            }
+        });
+
+        rewardModeSelect.addEventListener('change', (e) => {
+            localStorage.setItem('khoangmach_reward_mode', e.target.value);
+            showNotification(`[Khoáng Mạch] Chế độ nhận thưởng: ${e.target.options[e.target.selectedIndex].text}`, 'info');
+        });
+
+        autoTakeOverCheckbox.addEventListener('change', (e) => {
+            localStorage.setItem('khoangmach_auto_takeover', e.target.checked);
+            const status = e.target.checked ? 'Bật' : 'Tắt';
+            showNotification(`[Khoáng Mạch] Tự động đoạt mỏ: ${status}`, 'info');
+        });
+
+        autoBuffCheckbox.addEventListener('change', (e) => {
+            localStorage.setItem('khoangmach_use_buff', e.target.checked);
+            const status = e.target.checked ? 'Bật' : 'Tắt';
+            showNotification(`[Khoáng Mạch] Tự động mua Linh Quang Phù: ${status}`, 'info');
+        });
+        
+        khoangMachButton.textContent = 'Khoáng Mạch';
+        khoangMachButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
+        khoangMachButton.addEventListener('click', async () => {
+            console.log('[HH3D Khoáng Mạch] Nút Khoáng Mạch đã được nhấn');
+            khoangMachButton.disabled = true;
+            khoangMachButton.textContent = 'Đang xử lý...';
+            
+            try {
+                const selectedMineSetting = localStorage.getItem('khoangmach_selected_mine');
+                const selectedMineInfo = JSON.parse(selectedMineSetting);
+                
+                if (!selectedMineInfo || !selectedMineInfo.id || !selectedMineInfo.type) {
+                    showNotification('Cài đặt mỏ không hợp lệ. Vui lòng chọn lại mỏ.', 'error');
+                    khoangMachButton.disabled = false;
+                    khoangMachButton.textContent = 'Khoáng Mạch';
+                    return;
+                }
+
+                const selectedRewardMode = localStorage.getItem('khoangmach_reward_mode');
+                const autoTakeOver = localStorage.getItem('khoangmach_auto_takeover') === 'true';
+                const autoBuff = localStorage.getItem('khoangmach_use_buff') === 'true';
+                
+                await khoangmach.doKhoangMach({
+                    mineId: selectedMineInfo.id,
+                    mineType: selectedMineInfo.type,
+                    rewardMode: selectedRewardMode,
+                    autoTakeOver: autoTakeOver,
+                    autoBuff: autoBuff
+                });
+            } catch (error) {
+                console.error('[HH3D Khoáng Mạch] ❌ Lỗi trong quá trình Khoáng Mạch:', error);
+                showNotification('❌ Lỗi trong quá trình Khoáng Mạch.', 'error');
+            } finally {
+                khoangMachButton.disabled = false;
+                khoangMachButton.textContent = 'Khoáng Mạch';
+            }
+        });
     }
 
     // Hàm tạo nút menu tùy chỉnh
@@ -2033,6 +2550,11 @@
             .custom-script-dice-roll-btn:hover {
                 background-color: #c0392b;
             }
+            .custom-script-dice-roll-btn:disabled {
+                background-color: #7f8c8d;
+                cursor: not-allowed;
+                box-shadow: none;
+            }
             .custom-script-menu-group-dice-roll {
                 display: flex;
                 flex-direction: row;
@@ -2079,6 +2601,63 @@
             }
             .custom-script-hoang-vuc-settings-btn:hover {
                 background-color: #1f6da1ff;
+            }
+            /* Panel cài đặt chung */
+            .custom-script-settings-panel {
+                background-color: #333;
+                border: 1px solid #444;
+                border-radius: 5px;
+                padding: 10px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                margin-top: 5px; /* Khoảng cách với nút bấm */
+            }
+
+            /* Kiểu dáng cho nhóm cài đặt Khoáng Mạch */
+            .custom-script-khoang-mach-config-group {
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+            }
+
+            /* Kiểu dáng cho nhãn (label) */
+            .custom-script-khoang-mach-config-group label {
+                font-size: 13px;
+                color: #ccc;
+                font-weight: bold;
+            }
+
+            /* Kiểu dáng cho dropdown (select) */
+            .custom-script-khoang-mach-config-group select {
+                width: 100%;
+                padding: 8px;
+                font-size: 13px;
+                border-radius: 5px;
+                border: 1px solid #555;
+                background-color: #444;
+                color: #eee;
+                cursor: pointer;
+                box-sizing: border-box; /* Đảm bảo padding không làm thay đổi kích thước */
+            }
+
+            /* Kiểu dáng cho checkbox và nhãn đi kèm */
+            .custom-script-khoang-mach-config-group.checkbox-group {
+                flex-direction: row;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .custom-script-khoang-mach-config-group.checkbox-group input[type="checkbox"] {
+                width: 16px;
+                height: 16px;
+                cursor: pointer;
+            }
+
+            .custom-script-khoang-mach-config-group.checkbox-group label {
+                font-weight: normal;
+                color: #fff;
+                cursor: pointer;
             }
         `);
 
@@ -2139,7 +2718,8 @@
                                     // Gọi tuần tự các hàm
                                     await doDailyCheckin(nonce);
                                     await doClanDailyCheckin(nonce);
-                                    await doVanDap(nonce)
+
+                                    await vandap.doVanDap(nonce)
                                     console.log('[HH3D Script] ✅ Tất cả nhiệm vụ đã hoàn thành.');
                                     if (taskTracker.isTaskDone(accountId, 'diemdanh')) {
                                     autoTaskButton.disabled = true;
@@ -2213,6 +2793,9 @@
                             } else if (link.isLuanVo) {
                                 groupDiv.className = 'custom-script-hoang-vuc-group';
                                 createLuanVoMenu(groupDiv);
+                            } else if (link.isKhoangMach) {
+                                groupDiv.className = 'custom-script-hoang-vuc-group';
+                                createKhoangMachMenu(groupDiv);
                             }
                             else {
                                 const menuItem = document.createElement('a');
@@ -2244,6 +2827,7 @@
                     document.addEventListener('click', function(e) {
                         if (!customMenuWrapper.contains(e.target)) {
                             dropdownMenu.classList.add('hidden');
+                            iconSpan.textContent = 'task';
                         }
                     });
                 } else {
@@ -2260,17 +2844,44 @@
         console.log('[HH3D Script] Đang theo dõi DOM để chèn nút.');
     }
 
+    // ===============================================
+    // Automactic
+    // ===============================================
+    async function automatic(accountId) {
+        if (!taskTracker.isTaskDone(accountId, 'diemdanh')) {
+            await doDailyCheckin();
+            await doDailyCheckin();
+            await vandap.doVanDap();
+        }
+
+        do {
+            const nextTime = new Date(taskTracker.getNextTime(accountId))
+
+            setTimeout(await doThiLuyenTongMon(), nextTime - Date())
+
+            //const nextTime = taskTracker.getNextTime(accountId)
+
+
+        } while (!taskTracker.isTaskDone(accountId, 'thiluyen'))
+
+    }
 
     // ===============================================
     // KHỞI TẠO SCRIPT
     // ===============================================
     const taskTracker = new TaskTracker();
-        const accountId = getAccountId();
+    const accountId = getAccountId();
         if (accountId) {
             let accountData = taskTracker.getAccountData(accountId)
             console.log(`[HH3D Script] ✅ Đã lấy dữ liệu tài khoản: ${JSON.stringify(accountData)}`);
         } else {
             console.warn('[HH3D Script] ⚠️ Không thể lấy ID tài khoản. Một số tính năng có thể không hoạt động.');
         }
+    const vandap = new VanDap();
+    const dothach = new DoThach();
+    const hoangvuc = new HoangVuc();
+    const luanvo = new LuanVo();
+    const bicanh = new BiCanh();
+    const khoangmach = new KhoangMach();
     createCustomMenuButton();
 })();

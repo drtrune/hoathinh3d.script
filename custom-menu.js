@@ -661,15 +661,34 @@
             try {
                 const response = await fetch(this.ajaxUrl, { method: 'POST', headers, body: payload });
                 const data = await response.json();
+
                 if (data.success) {
                     this.showNotification(`✅ Cược thành công vào ${stone.name}! Tỷ lệ x${stone.reward_multiplier}`, 'success');
+                    this._alreadyClaimedReward = false; // reset flag
                     return true;
+                } 
+                else if (data.data === 'Vui lòng nhận thưởng kỳ trước rồi mới tiếp tục đặt cược.') {
+                    if (!this._alreadyClaimedReward) {
+                        if (await this.#claimReward()) {
+                            this._alreadyClaimedReward = true;
+                            return await this.#placeBet(stone, betAmount, placeBetSecurity);
+                        } else {
+                            this.showNotification(`❌ Không thể nhận thưởng kỳ trước, vui lòng thử lại.`, 'error');
+                        }
+                    } else {
+                        this.showNotification(`❌ Đã thử nhận thưởng nhưng vẫn không cược được.`, 'error');
+                    }
+                    this._alreadyClaimedReward = false; // reset flag
+                    return false;
                 }
+
                 const errorMessage = data.data || data.message || 'Lỗi không xác định.';
                 this.showNotification(`❌ Lỗi cược: ${errorMessage}`, 'error');
+                this._alreadyClaimedReward = false;
                 return false;
             } catch (e) {
                 this.showNotification(`❌ Lỗi mạng khi cược: ${e}`, 'error');
+                this._alreadyClaimedReward = false;
                 return false;
             }
         }
@@ -1900,9 +1919,8 @@
                     showNotification('Mỏ đã đầy. Không vào được.', 'warn');
                     return;
                 } else {
-                    if (!await this.enterMine(targetMine.id)) {
-                        return;
-                    }
+                    await this.enterMine(targetMine.id);
+                    return;
                 }
             }
 

@@ -141,7 +141,8 @@
                 phucloi: { date: today, done: false, nextTime: null },
                 hoangvuc: { date: today, done: false, nextTime: null },
                 dothach: { betplaced: false, reward_claimed: false, turn: 1 },
-                luanvo: { date: today, battle_joined: false, auto_accept: false, done: false }
+                luanvo: { date: today, battle_joined: false, auto_accept: false, done: false },
+                khoangmach: {date: today, done: false}
             };
 
             if (accountData.lastUpdatedDate !== today) {
@@ -1874,7 +1875,10 @@
                     showNotification(d.data.message, 'success');
                     return true;
                 } else {
-                    showNotification(d.message || 'Lỗi vào mỏ.', 'error');
+                    showNotification(d.data.message || 'Lỗi vào mỏ.', 'error');
+                    if (d.data.message === 'Đạo hữu đã đạt đủ thưởng ngày và không thể vào Khoáng Mạch cho đến ngày mai.') {
+                        taskTracker.markTaskDone(accountId, 'khoangmach');
+                    }
                     return false;
                 }
             } catch (e) {
@@ -2247,10 +2251,10 @@
             const updateSettingsIcon = () => {
                 const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
                 if (maximizeDamage) {
-                    settingsButton.textContent = '↑';
+                    settingsButton.textContent = '🔼';
                     settingsButton.title = 'Tối đa hoá sát thương: Bật';
                 } else {
-                    settingsButton.textContent = '-';
+                    settingsButton.textContent = '🔷';
                     settingsButton.title = 'Tối đa hoá sát thương: Tắt';
                 }
             };
@@ -2512,10 +2516,19 @@
                 console.error('[HH3D Khoáng Mạch] ❌', error);
                 showNotification('❌ Lỗi trong quá trình Khoáng Mạch.', 'error');
             } finally {
+                if (taskTracker.isTaskDone(accountId, 'khoangmach')) {
+                    khoangMachButton.disabled = true;
+                    khoangMachButton.textContent = 'Khoáng Mạch ✅';
+                } else {
                 khoangMachButton.disabled = false;
                 khoangMachButton.textContent = 'Khoáng Mạch';
+                }
             }
         });
+        if (taskTracker.isTaskDone(accountId, 'khoangmach')) {
+                    khoangMachButton.disabled = true;
+                    khoangMachButton.textContent = 'Khoáng Mạch ✅';
+        }
     }
 
 
@@ -2660,10 +2673,13 @@
     box-shadow: none;
 }
 .custom-script-hoang-vuc-settings-btn {
-    width: 40px;
-    height: 40px;
+    width: 30px;
+    height: 30px;
     background-color: #555;
     color: white;
+    border-radius: 15px;
+    margin-top: 5px;
+
 }
 .custom-script-hoang-vuc-settings-btn:hover {
     background-color: #1f6da1ff;
@@ -2700,7 +2716,11 @@
     cursor: pointer;
     transition: all 0.2s ease-in-out;
 }
-
+.custom-script-khoang-mach-button:disabled {
+    background-color: #7f8c8d;
+    cursor: not-allowed;
+    box-shadow: none;
+}
 .custom-script-settings-panel {
     background-color: #333;
     border: 1px solid #444;

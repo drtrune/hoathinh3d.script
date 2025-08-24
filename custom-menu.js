@@ -2379,17 +2379,31 @@
 
     // Hàm tạo menu khoáng mạch
     async function createKhoangMachMenu(parentGroup) {
-        // Nhận cả hai giá trị từ hàm getAllMines()
         const { optionsHtml, minesData } = await khoangmach.getAllMines();
 
+        // --- Container chung (dọc) ---
+        const container = document.createElement('div');
+        container.classList.add('custom-script-khoang-mach-container');
+
+        // --- Hàng nút (Settings + Khoáng Mạch) ---
+        const buttonRow = document.createElement('div');
+        buttonRow.classList.add('custom-script-khoang-mach-button-row');
+
         const khoangMachButton = document.createElement('button');
+        khoangMachButton.classList.add('custom-script-khoang-mach-button');
+        khoangMachButton.textContent = 'Khoáng Mạch';
+
         const khoangMachSettingsButton = document.createElement('button');
         khoangMachSettingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
-        
+        khoangMachSettingsButton.textContent = '⚙️';
+
+        buttonRow.appendChild(khoangMachSettingsButton);
+        buttonRow.appendChild(khoangMachButton);
+
+        // --- Panel config ---
         const configDiv = document.createElement('div');
         configDiv.style.display = 'none';
         configDiv.classList.add('custom-script-settings-panel');
-        
         configDiv.innerHTML = `
             <div class="custom-script-khoang-mach-config-group">
                 <label for="specificMineSelect">Chọn Khoáng Mạch:</label>
@@ -2413,63 +2427,43 @@
             </div>
         `;
 
-        const buttonGroup = document.createElement('div');
-        buttonGroup.classList.add('custom-script-menu-group');
-        buttonGroup.appendChild(khoangMachSettingsButton);
-        buttonGroup.appendChild(khoangMachButton);
+        // --- Thêm vào container và parent ---
+        container.appendChild(buttonRow);
+        container.appendChild(configDiv);
+        parentGroup.appendChild(container);
 
-        parentGroup.appendChild(buttonGroup);
-        parentGroup.appendChild(configDiv);
-
-        let settingsOpen = false;
+        // --- Khôi phục cài đặt từ localStorage ---
         const specificMineSelect = configDiv.querySelector('#specificMineSelect');
         const rewardModeSelect = configDiv.querySelector('#rewardModeSelect');
         const autoTakeOverCheckbox = configDiv.querySelector('#autoTakeOver');
         const autoBuffCheckbox = configDiv.querySelector('#autoBuff');
 
-        // Khôi phục giá trị từ localStorage
         const savedMineSetting = localStorage.getItem('khoangmach_selected_mine');
         if (savedMineSetting) {
             try {
                 const mineInfo = JSON.parse(savedMineSetting);
-                if (mineInfo && mineInfo.id) {
-                    specificMineSelect.value = mineInfo.id;
-                }
-            } catch (error) {
-                console.error('[Khoáng Mạch] Lỗi phân tích JSON từ localStorage:', error);
-                localStorage.removeItem('khoangmach_selected_mine');
-            }
+                if (mineInfo && mineInfo.id) specificMineSelect.value = mineInfo.id;
+            } catch (e) { localStorage.removeItem('khoangmach_selected_mine'); }
         }
         rewardModeSelect.value = localStorage.getItem('khoangmach_reward_mode') || 'any';
         autoTakeOverCheckbox.checked = localStorage.getItem('khoangmach_auto_takeover') === 'true';
         autoBuffCheckbox.checked = localStorage.getItem('khoangmach_use_buff') === 'true';
-        
-        const updateSettingsButtonState = () => {
-            khoangMachSettingsButton.textContent = settingsOpen ? '⚙️' : '⚙️';
-            khoangMachSettingsButton.title = settingsOpen ? 'Đóng cài đặt Khoáng Mạch' : 'Mở cài đặt Khoáng Mạch';
-        };
 
-        updateSettingsButtonState();
-
+        // --- Event mở/đóng config ---
+        let settingsOpen = false;
         khoangMachSettingsButton.addEventListener('click', () => {
             settingsOpen = !settingsOpen;
             configDiv.style.display = settingsOpen ? 'block' : 'none';
-            updateSettingsButtonState();
+            khoangMachSettingsButton.title = settingsOpen ? 'Đóng cài đặt Khoáng Mạch' : 'Mở cài đặt Khoáng Mạch';
         });
 
+        // --- Event lưu localStorage ---
         specificMineSelect.addEventListener('change', (e) => {
             const selectedId = e.target.value;
-            const selectedOptionText = e.target.options[e.target.selectedIndex].text;
-            
-            // Tìm kiếm mỏ đã chọn trong mảng dữ liệu thô
             const selectedMine = minesData.find(mine => mine.id === selectedId);
-
             if (selectedMine && selectedMine.type) {
                 localStorage.setItem('khoangmach_selected_mine', JSON.stringify({ id: selectedId, type: selectedMine.type }));
-                showNotification(`[Khoáng Mạch] Đã chọn mỏ: ${selectedOptionText}`, 'info');
-            } else {
-                console.error(`[Khoáng Mạch] Không tìm thấy thông tin type cho mỏ ID: ${selectedId}`);
-                showNotification('Lỗi: Không tìm thấy thông tin mỏ. Vui lòng chọn lại.', 'error');
+                showNotification(`[Khoáng Mạch] Đã chọn mỏ: ${e.target.options[e.target.selectedIndex].text}`, 'info');
             }
         });
 
@@ -2489,38 +2483,33 @@
             const status = e.target.checked ? 'Bật' : 'Tắt';
             showNotification(`[Khoáng Mạch] Tự động mua Linh Quang Phù: ${status}`, 'info');
         });
-        
-        khoangMachButton.textContent = 'Khoáng Mạch';
-        khoangMachButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
+
+        // --- Event nút Khoáng Mạch ---
         khoangMachButton.addEventListener('click', async () => {
-            console.log('[HH3D Khoáng Mạch] Nút Khoáng Mạch đã được nhấn');
             khoangMachButton.disabled = true;
             khoangMachButton.textContent = 'Đang xử lý...';
-            
+
             try {
                 const selectedMineSetting = localStorage.getItem('khoangmach_selected_mine');
                 const selectedMineInfo = JSON.parse(selectedMineSetting);
-                
                 if (!selectedMineInfo || !selectedMineInfo.id || !selectedMineInfo.type) {
                     showNotification('Cài đặt mỏ không hợp lệ. Vui lòng chọn lại mỏ.', 'error');
-                    khoangMachButton.disabled = false;
-                    khoangMachButton.textContent = 'Khoáng Mạch';
                     return;
                 }
 
                 const selectedRewardMode = localStorage.getItem('khoangmach_reward_mode');
                 const autoTakeOver = localStorage.getItem('khoangmach_auto_takeover') === 'true';
                 const autoBuff = localStorage.getItem('khoangmach_use_buff') === 'true';
-                
+
                 await khoangmach.doKhoangMach({
                     mineId: selectedMineInfo.id,
                     mineType: selectedMineInfo.type,
                     rewardMode: selectedRewardMode,
-                    autoTakeOver: autoTakeOver,
-                    autoBuff: autoBuff
+                    autoTakeOver,
+                    autoBuff
                 });
             } catch (error) {
-                console.error('[HH3D Khoáng Mạch] ❌ Lỗi trong quá trình Khoáng Mạch:', error);
+                console.error('[HH3D Khoáng Mạch] ❌', error);
                 showNotification('❌ Lỗi trong quá trình Khoáng Mạch.', 'error');
             } finally {
                 khoangMachButton.disabled = false;
@@ -2529,212 +2518,226 @@
         });
     }
 
+
+
     // Hàm tạo nút menu tùy chỉnh
     async function createCustomMenuButton() {
     addStyle(`
-            /* Kiểu chung cho toàn bộ menu */
-            .custom-script-menu {
-                display: flex !important;
-                flex-direction: column !important;
-                position: absolute;
-                background-color: #242323ff;
-                min-width: 280px !important;
-                z-index: 1001;
-                border-radius: 5px;
-                top: calc(100% + 5px);
-                right: 0;
-                padding: 10px;
-                gap: 6px;
-            }
-            .custom-script-menu.hidden {
-                visibility: hidden;
-                opacity: 0;
-                pointer-events: none;
-                transition: opacity 0.2s ease;
-            }
+/* Kiểu chung cho toàn bộ menu */
+.custom-script-menu {
+    display: flex !important;
+    flex-direction: column !important;
+    position: absolute;
+    background-color: #242323ff;
+    min-width: 280px !important;
+    z-index: 1001;
+    border-radius: 5px;
+    top: calc(100% + 6px);
+    right: 0;
+    padding: 8px;
+    gap: 6px;
+}
 
-            /* Kiểu chung cho các nhóm nút */
-            .custom-script-menu-group {
-                display: flex;
-                flex-direction: row;
-                gap: 5px;
-                flex-wrap: wrap;
-                justify-content: flex-start;
-            }
+/* Kiểu chung cho các nhóm nút */
+.custom-script-menu-group {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
 
-            /* Kiểu chung cho tất cả các nút (a, button) */
-            .custom-script-menu-button,
-            .custom-script-menu-link {
-                color: black;
-                padding: 10px 10px !important;
-                font-size: 13px !important;
-                text-decoration: none;
-                border-radius: 5px;
-                background-color: #f1f1f1;
-                flex-grow: 1;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                border: none;
-                cursor: pointer;
-                transition: all 0.2s ease-in-out;
-            }
+/* Kiểu chung cho tất cả các nút (a, button) */
+.custom-script-menu-button,
+.custom-script-menu-link {
+    color: black;
+    padding: 8px 10px !important;
+    font-size: 13px !important;
+    text-decoration: none;
+    border-radius: 5px;
+    background-color: #f1f1f1;
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+}
+.custom-script-menu.hidden {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
 
-            .custom-script-menu-button:hover,
-            .custom-script-menu-link:hover {
-                box-shadow: 0 0 15px rgba(52, 152, 219, 0.7);
-                transform: scale(1.03); /* Thêm hiệu ứng phóng to nhẹ khi hover */
-            }
+.custom-script-menu-button:hover,
+.custom-script-menu-link:hover {
+    box-shadow: 0 0 15px rgba(52, 152, 219, 0.7);
+    transform: scale(1.03);
+}
 
-            /* Kiểu riêng cho nút Điểm danh/Tế lễ/Vấn đáp */
-            .custom-script-auto-btn {
-                background-color: #3498db;
-                color: white;
-                font-weight: bold;
-            }
-            .custom-script-auto-btn:hover {
-                background-color: #2980b9;
-            }
-            .custom-script-auto-btn:disabled {
-                background-color: #7f8c8d;
-                cursor: not-allowed;
-                box-shadow: none;
-            }
+/* Nút auto-btn */
+.custom-script-auto-btn {
+    background-color: #3498db;
+    color: white;
+    font-weight: bold;
+}
+.custom-script-auto-btn:hover {
+    background-color: #2980b9;
+}
+.custom-script-auto-btn:disabled {
+    background-color: #7f8c8d;
+    cursor: not-allowed;
+    box-shadow: none;
+}
 
-            /* Kiểu riêng cho dropdown và nút Đổ Thạch */
-            .custom-script-dice-roll-group {
-                display: flex;
-                align-items: center;
-                gap: 5px;
-                flex-grow: 1;
-            }
-            .custom-script-dice-roll-select {
-                padding: 9px 10px;
-                font-size: 13px;
-                border-radius: 5px;
-                border: 1px solid #ccc;
-                background-color: #fff;
-                color: black;
-                cursor: pointer;
-                flex-grow: 1;
-            }
-            .custom-script-dice-roll-btn {
-                background-color: #e74c3c;
-                color: white;
-                font-weight: bold;
-            }
-            .custom-script-dice-roll-btn:hover {
-                background-color: #c0392b;
-            }
-            .custom-script-dice-roll-btn:disabled {
-                background-color: #7f8c8d;
-                cursor: not-allowed;
-                box-shadow: none;
-            }
-            .custom-script-menu-group-dice-roll {
-                display: flex;
-                flex-direction: row;
-                gap: 5px;
-                flex-wrap: wrap;
-                justify-content: flex-start;
-                align-items: center;
-            }
+/* Nhóm Dice Roll */
+.custom-script-dice-roll-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-grow: 1;
+}
+.custom-script-dice-roll-select {
+    padding: 8px 10px;
+    font-size: 13px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    color: black;
+    cursor: pointer;
+    flex-grow: 1;
+}
+.custom-script-dice-roll-btn {
+    background-color: #e74c3c;
+    color: white;
+    font-weight: bold;
+    padding: 8px 10px;
+}
+.custom-script-dice-roll-btn:hover {
+    background-color: #c0392b;
+}
+.custom-script-dice-roll-btn:disabled {
+    background-color: #7f8c8d;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+.custom-script-menu-group-dice-roll {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+}
 
+/* Nhóm Hoang Vực */
+.custom-script-hoang-vuc-group {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+}
+.custom-script-hoang-vuc-btn,
+.custom-script-hoang-vuc-settings-btn {
+    border-radius: 5px;
+    border: none;
+    font-weight: bold;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.custom-script-hoang-vuc-btn {
+    background-color: #3498db;
+    color: white;
+}
+.custom-script-hoang-vuc-btn:hover {
+    background-color: #3498db;
+}
+.custom-script-hoang-vuc-btn:disabled {
+    background-color: #7f8c8d;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+.custom-script-hoang-vuc-settings-btn {
+    width: 40px;
+    height: 40px;
+    background-color: #555;
+    color: white;
+}
+.custom-script-hoang-vuc-settings-btn:hover {
+    background-color: #1f6da1ff;
+}
 
-            /* Kiểu riêng cho nhóm Hoang Vực */
-            .custom-script-hoang-vuc-group {
-                display: flex;
-                flex-direction: row;
-                gap: 5px;
-            }
-            .custom-script-hoang-vuc-btn {
-                background-color: #3498db;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 5px;
-            }
-            .custom-script-hoang-vuc-btn:hover {
-                background-color: #3498db;
-            }
-            .custom-script-hoang-vuc-btn:disabled {
-                background-color: #7f8c8d;
-                cursor: not-allowed;
-                box-shadow: none;
-            }
-            .custom-script-hoang-vuc-settings-btn {
-                background-color: #3498db;
-                color: white;
-                font-weight: bold;
-                width: 30px;
-                height: 30px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                margin-top: 5px;
-                border-radius: 50%;
-                border: none;
-            }
-            .custom-script-hoang-vuc-settings-btn:hover {
-                background-color: #1f6da1ff;
-            }
-            /* Panel cài đặt chung */
-            .custom-script-settings-panel {
-                background-color: #333;
-                border: 1px solid #444;
-                border-radius: 5px;
-                padding: 10px;
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-                margin-top: 5px; /* Khoảng cách với nút bấm */
-            }
+/* Khoáng Mạch */
+.custom-script-khoang-mach-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
 
-            /* Kiểu dáng cho nhóm cài đặt Khoáng Mạch */
-            .custom-script-khoang-mach-config-group {
-                display: flex;
-                flex-direction: column;
-                gap: 5px;
-            }
+.custom-script-khoang-mach-button-row {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    width: 100%;
+}
 
-            /* Kiểu dáng cho nhãn (label) */
-            .custom-script-khoang-mach-config-group label {
-                font-size: 13px;
-                color: #ccc;
-                font-weight: bold;
-            }
+.custom-script-khoang-mach-button {
+    padding: 8px 10px !important;
+    font-size: 13px !important;
+    text-decoration: none;
+    border-radius: 5px;
+    background-color: #3498db;
+    color: white;
+    font-weight: bold;
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+}
 
-            /* Kiểu dáng cho dropdown (select) */
-            .custom-script-khoang-mach-config-group select {
-                width: 100%;
-                padding: 8px;
-                font-size: 13px;
-                border-radius: 5px;
-                border: 1px solid #555;
-                background-color: #444;
-                color: #eee;
-                cursor: pointer;
-                box-sizing: border-box; /* Đảm bảo padding không làm thay đổi kích thước */
-            }
+.custom-script-settings-panel {
+    background-color: #333;
+    border: 1px solid #444;
+    border-radius: 5px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
 
-            /* Kiểu dáng cho checkbox và nhãn đi kèm */
-            .custom-script-khoang-mach-config-group.checkbox-group {
-                flex-direction: row;
-                align-items: center;
-                gap: 8px;
-            }
+.custom-script-khoang-mach-config-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
 
-            .custom-script-khoang-mach-config-group.checkbox-group input[type="checkbox"] {
-                width: 16px;
-                height: 16px;
-                cursor: pointer;
-            }
+.custom-script-khoang-mach-config-group label {
+    font-size: 13px;
+    color: #ccc;
+    font-weight: bold;
+}
 
-            .custom-script-khoang-mach-config-group.checkbox-group label {
-                font-weight: normal;
-                color: #fff;
-                cursor: pointer;
-            }
+.custom-script-khoang-mach-config-group select {
+    padding: 8px;
+}
+
+.custom-script-khoang-mach-config-group.checkbox-group {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+}
+
+.custom-script-khoang-mach-config-group.checkbox-group input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+}
+
         `);
 
         const notificationsDivSelector = '.load-notification.relative';

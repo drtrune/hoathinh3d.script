@@ -1743,6 +1743,7 @@
             return getSecurityNonce(this.khoangMachUrl, regex);
         }
 
+
         async loadMines(mineType) {
             const nonce = await getSecurityNonce(this.khoangMachUrl, /action:\s*'load_mines_by_type',\s*mine_type:\s*mineType,\s*security:\s*'([a-f0-9]+)'/);
             if (!nonce) { showNotification('Lỗi nonce (load_mines).', 'error'); return null; }
@@ -1755,53 +1756,109 @@
         };
 
         async getAllMines() {
-            // Lưu trữ thông tin của các loại mỏ
-            const mineTypes = ['gold', 'silver', 'copper'];
-            const allMines = [];
+            const cacheKey = "HH3D_allMines";
+            const cacheRaw = localStorage.getItem(cacheKey);
 
-            // Lặp qua từng loại mỏ để tải dữ liệu
-            for (const type of mineTypes) {
-                const mines = await this.loadMines(type);
-                if (mines) {
-                    mines.forEach(mine => {
-                        mine.type = type;
-                        allMines.push(mine);
-                    });
+            // Kiểm tra cache
+            if (cacheRaw) {
+                try {
+                    const cache = JSON.parse(cacheRaw);
+                    if (Date.now() < cache.expiresAt) {
+                        console.log("[HH3D] 🗄️ Dùng dữ liệu mỏ từ cache");
+                        return {
+                            optionsHtml: cache.optionsHtml,
+                            minesData: cache.data
+                        };
+                    }
+                } catch (e) {
+                    console.warn("[HH3D] Lỗi đọc cache:", e);
                 }
             }
 
-            // Sắp xếp mảng allMines
+            // --- Nếu chưa có cache hoặc đã hết hạn, tải mới ---
+            const nonce = await getSecurityNonce(
+                this.khoangMachUrl,
+                /action:\s*'load_mines_by_type',\s*mine_type:\s*mineType,\s*security:\s*'([a-f0-9]+)'/
+            );
+            if (!nonce) {
+                showNotification('Lỗi nonce (getAllMines).', 'error');
+                return { optionsHtml: '', minesData: [] };
+            }
+
+            const mineTypes = ['gold', 'silver', 'copper'];
+            const allMines = [];
+
+            // Tải song song cho nhanh
+            const requests = mineTypes.map(async type => {
+                const payload = new URLSearchParams({
+                    action: 'load_mines_by_type',
+                    mine_type: type,
+                    security: nonce
+                });
+
+                try {
+                    const r = await fetch(this.ajaxUrl, {
+                        method: 'POST',
+                        headers: this.headers,
+                        body: payload,
+                        credentials: 'include'
+                    });
+                    const d = await r.json();
+
+                    if (d.success) {
+                        d.data.forEach(mine => {
+                            mine.type = type;
+                            allMines.push(mine);
+                        });
+                    } else {
+                        showNotification(d.message || `Lỗi tải mỏ loại ${type}.`, 'error');
+                    }
+                } catch (e) {
+                    console.error(`${this.logPrefix} ❌ Lỗi mạng (tải mỏ ${type}):`, e);
+                }
+            });
+
+            await Promise.all(requests);
+
+            // --- Sắp xếp ---
             allMines.sort((a, b) => {
                 const typeOrder = { 'gold': 1, 'silver': 2, 'copper': 3 };
                 const typeComparison = typeOrder[a.type] - typeOrder[b.type];
-
                 if (typeComparison === 0) {
                     return a.name.localeCompare(b.name, 'vi', { sensitivity: 'base' });
                 }
-
                 return typeComparison;
             });
 
-            // Tạo mảng chuỗi HTML với định dạng mong muốn
+            // --- Sinh HTML ---
             const mineOptionsHtml = allMines.map(mine => {
                 let typePrefix = '';
-                if (mine.type === 'gold') {
-                    typePrefix = '[Thượng] ';
-                } else if (mine.type === 'silver') {
-                    typePrefix = '[Trung] ';
-                } else if (mine.type === 'copper') {
-                    typePrefix = '[Hạ] ';
-                }
+                if (mine.type === 'gold') typePrefix = '[Thượng] ';
+                else if (mine.type === 'silver') typePrefix = '[Trung] ';
+                else if (mine.type === 'copper') typePrefix = '[Hạ] ';
                 return `<option value="${mine.id}">${typePrefix}${mine.name} (${mine.id})</option>`;
             }).join('');
 
-            // --- ĐÂY LÀ PHẦN THAY ĐỔI QUAN TRỌNG ---
-            // Trả về một đối tượng chứa cả chuỗi HTML và mảng dữ liệu gốc
+            // --- Tính thời điểm 0h hôm sau ---
+            const now = new Date();
+            const expireDate = new Date(now);
+            expireDate.setHours(24, 0, 0, 0); // 0h ngày hôm sau
+            const expiresAt = expireDate.getTime();
+
+            // --- Lưu cache ---
+            localStorage.setItem(cacheKey, JSON.stringify({
+                data: allMines,
+                optionsHtml: mineOptionsHtml,
+                expiresAt
+            }));
+
             return {
                 optionsHtml: mineOptionsHtml,
                 minesData: allMines
             };
         }
+
+
         async enterMine(mineId) {
             const nonce1 = await this.#getNonce(/action: 'enter_mine',\s*mine_id:\s*mine_id,\s*security: '([a-f0-9]+)'/);
             const nonce2 = await this.#getNonce(/var security_km = '([a-f0-9]+)'/);
@@ -2341,8 +2398,8 @@
             <div class="custom-script-khoang-mach-config-group">
                 <label for="rewardModeSelect">Chế độ Nhận Thưởng:</label>
                 <select id="rewardModeSelect">
-                    <option value=">50">Thưởng thêm > 50%</option>
-                    <option value=">0">Thưởng thêm > 0%</option>
+                    <option value=">50">> 50%</option>
+                    <option value=">0">> 0%</option>
                     <option value="any">Bất kỳ</option>
                 </select>
             </div>

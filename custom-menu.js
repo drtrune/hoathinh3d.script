@@ -2535,7 +2535,7 @@
 
     // Hàm tạo nút menu tùy chỉnh
     async function createCustomMenuButton() {
-    addStyle(`
+        addStyle(`
 /* Kiểu chung cho toàn bộ menu */
 .custom-script-menu {
     display: flex !important;
@@ -2761,16 +2761,30 @@
         `);
 
         const notificationsDivSelector = '.load-notification.relative';
+        const retryInterval = 500; // Thử lại mỗi 500ms
+        const timeout = 15000; // Chờ tối đa 15 giây
+        let elapsedTime = 0;
 
-        const observer = new MutationObserver((mutationsList, observer) => {
+        console.log('[HH3D Script] ⏳ Đang tìm kiếm vị trí để chèn menu...');
+
+        const intervalId = setInterval(() => {
             const notificationsDiv = document.querySelector(notificationsDivSelector);
-            if (notificationsDiv) {
-                console.log('[HH3D Script] ✅ Đã tìm thấy nút thông báo. Đang chèn menu.');
-                observer.disconnect();
 
+            // 1. Nếu tìm thấy phần tử
+            if (notificationsDiv) {
+                clearInterval(intervalId); // Dừng việc tìm kiếm
+                console.log('[HH3D Script] ✅ Đã tìm thấy vị trí. Bắt đầu chèn menu.');
+
+                // --- Toàn bộ logic tạo menu được di chuyển vào đây ---
                 const parentNavItems = notificationsDiv.parentNode;
 
                 if (parentNavItems && parentNavItems.classList.contains('nav-items')) {
+                    // Tránh chèn menu lặp lại nếu script chạy nhiều lần
+                    if (document.querySelector('.custom-script-item-wrapper')) {
+                        console.log('[HH3D Script] ⚠️ Menu đã tồn tại. Bỏ qua việc chèn lại.');
+                        return;
+                    }
+
                     const customMenuWrapper = document.createElement('div');
                     customMenuWrapper.classList.add('load-notification', 'relative', 'custom-script-item-wrapper');
 
@@ -2791,7 +2805,6 @@
                     LINK_GROUPS.forEach(group => {
                         const groupDiv = document.createElement('div');
                         groupDiv.className = 'custom-script-menu-group';
-
                         dropdownMenu.appendChild(groupDiv);
 
                         group.links.forEach(link => {
@@ -2800,12 +2813,10 @@
                                 autoTaskButton.textContent = link.text;
                                 autoTaskButton.id = 'auto-task-btn';
                                 autoTaskButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-
-                                autoTaskButton.addEventListener('click', async() => {
+                                autoTaskButton.addEventListener('click', async () => {
                                     console.log('[HH3D Script] 🖱️ Nút Điểm Danh - Tế lễ - Vấn đáp đã được nhấn.');
                                     autoTaskButton.disabled = true;
                                     autoTaskButton.textContent = 'Đang xử lý...';
-
                                     const nonce = await getNonce();
                                     if (!nonce) {
                                         showNotification('Không tìm thấy nonce! Vui lòng tải lại trang.', 'error');
@@ -2813,16 +2824,13 @@
                                         autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
                                         return;
                                     }
-
-                                    // Gọi tuần tự các hàm
                                     await doDailyCheckin(nonce);
                                     await doClanDailyCheckin(nonce);
-
                                     await vandap.doVanDap(nonce)
                                     console.log('[HH3D Script] ✅ Tất cả nhiệm vụ đã hoàn thành.');
                                     if (taskTracker.isTaskDone(accountId, 'diemdanh')) {
-                                    autoTaskButton.disabled = true;
-                                    autoTaskButton.textContent = 'Đã hoàn thành Điểm danh - Tế lễ - Vấn đáp';
+                                        autoTaskButton.disabled = true;
+                                        autoTaskButton.textContent = 'Đã hoàn thành Điểm danh - Tế lễ - Vấn đáp';
                                     } else {
                                         autoTaskButton.disabled = false;
                                         autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
@@ -2840,8 +2848,7 @@
                                 const thiLuyenButton = document.createElement('button');
                                 thiLuyenButton.textContent = link.text;
                                 thiLuyenButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-
-                                thiLuyenButton.addEventListener('click', async() => {
+                                thiLuyenButton.addEventListener('click', async () => {
                                     console.log('[HH3D Script] 🖱️ Nút Thí Luyện Tông Môn đã được nhấn.');
                                     thiLuyenButton.disabled = true;
                                     thiLuyenButton.textContent = 'Đang xử lý...';
@@ -2864,7 +2871,7 @@
                                 const phucLoiButton = document.createElement('button');
                                 phucLoiButton.textContent = link.text;
                                 phucLoiButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-                                phucLoiButton.addEventListener('click', async() => {
+                                phucLoiButton.addEventListener('click', async () => {
                                     console.log('[HH3D Script] 🖱️ Nút Phúc Lợi đã được nhấn');
                                     phucLoiButton.disabled = true;
                                     phucLoiButton.textContent = 'Đang xử lý...';
@@ -2880,9 +2887,9 @@
                                 });
                                 groupDiv.appendChild(phucLoiButton);
                                 if (taskTracker.isTaskDone(accountId, 'phucloi')) {
-                                        phucLoiButton.disabled = true;
-                                        phucLoiButton.textContent = 'Phúc Lợi ✅';
-                                    }
+                                    phucLoiButton.disabled = true;
+                                    phucLoiButton.textContent = 'Phúc Lợi ✅';
+                                }
                             } else if (link.isBiCanh) {
                                 groupDiv.className = 'custom-script-menu-group';
                                 createBiCanhMenu(groupDiv);
@@ -2895,8 +2902,7 @@
                             } else if (link.isKhoangMach) {
                                 groupDiv.className = 'custom-script-hoang-vuc-group';
                                 createKhoangMachMenu(groupDiv);
-                            }
-                            else {
+                            } else {
                                 const menuItem = document.createElement('a');
                                 menuItem.classList.add('custom-script-menu-link');
                                 menuItem.href = link.url;
@@ -2911,7 +2917,7 @@
                     customMenuWrapper.appendChild(dropdownMenu);
                     parentNavItems.insertBefore(customMenuWrapper, notificationsDiv.nextSibling);
 
-                    console.log('[HH3D Script] Đã chèn nút menu tùy chỉnh thành công.');
+                    console.log('[HH3D Script] 🎉 Chèn menu tùy chỉnh thành công!');
 
                     newMenuButton.addEventListener('click', function(e) {
                         e.preventDefault();
@@ -2929,18 +2935,20 @@
                             iconSpan.textContent = 'task';
                         }
                     });
-                } else {
-                    console.warn('[HH3D Script - Cảnh báo] Không tìm thấy phần tử cha ".nav-items". Không thể chèn menu.');
-                }
-            }
-        });
 
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-            attributes: true
-        });
-        console.log('[HH3D Script] Đang theo dõi DOM để chèn nút.');
+                } else {
+                    console.warn('[HH3D Script - Cảnh báo] ⚠️ Không tìm thấy phần tử cha ".nav-items". Không thể chèn menu.');
+                }
+                return; // Kết thúc hàm sau khi thành công
+            }
+
+            // 2. Nếu chưa tìm thấy, kiểm tra timeout
+            elapsedTime += retryInterval;
+            if (elapsedTime >= timeout) {
+                clearInterval(intervalId); // Dừng tìm kiếm
+                console.error(`[HH3D Script - Lỗi] ❌ Không tìm thấy phần tử "${notificationsDivSelector}" sau ${timeout / 1000} giây. Script sẽ không chèn menu.`);
+            }
+        }, retryInterval);
     }
 
     // ===============================================

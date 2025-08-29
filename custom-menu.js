@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.6
+// @version       2.6.1
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -1920,7 +1920,7 @@
                 const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
                 const d = await r.json();
                 if (d.success) {
-                    showNotification(d.message, 'success');
+                    showNotification('Mua Linh Quang Phù thành công', 'success');
                     return true;
                 } else {
                     showNotification(d.message || 'Lỗi mua vật phẩm.', 'error');
@@ -2003,7 +2003,6 @@
                 console.log(`[Khoáng mạch] Vị trí: ${myIndex}, Tên: ${myInfo.name}, Time: ${myInfo.time_spent}`);
 
                 if (myInfo.time_spent !== "Đạt tối đa") {
-                    console.log(`[Khoáng mạch] Chưa đạt tối đa, thoát vòng lặp.`);
                     showNotification(`Khoáng mạch chưa đủ thời gian.\nHiện đạt: ${myInfo.time_spent}`, 'warn');
                     // Có thể thêm delay để tránh spam server
                     break;

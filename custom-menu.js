@@ -1712,10 +1712,7 @@
                         if (success) {
                             challengesSent++;
                             myCanSend--;
-                            await this.delay(4000); // delay giữa các lượt
-                        } else {
-                            // nếu gửi thất bại, thoát vòng while user này
-                            break;
+                            await this.delay(4500); // delay giữa các lượt
                         }
                     }
                 }

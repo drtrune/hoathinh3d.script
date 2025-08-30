@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.6.1
+// @version       2.6.2
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -85,13 +85,49 @@
             return Better_Messages.nonce;
         }
         if (!nonce) {
-            nonce = await getSecurityNonce(weburl, '/s*nonce: \'([a-f0-9]+)\'/');
+            nonce = await getSecurityNonce(weburl+'?t', /customRestNonce\s*=\s*'([a-f0-9]+)'/);
             if (nonce) {
                 return nonce;
             }
         }
         return null;
     }
+
+     /**
+     * Lấy security nonce một cách chung chung từ một URL.
+     *
+     * @param {string} url - URL của trang web cần lấy nonce.
+     * @param {RegExp} regex - Biểu thức chính quy (regex) để tìm và trích xuất nonce.
+     * @returns {Promise<string|null>} Trả về security nonce nếu tìm thấy, ngược lại trả về null.
+     */
+    async function getSecurityNonce(url, regex) {
+        // Sử dụng một tiền tố log cố định cho đơn giản
+        const logPrefix = '[HH3D Auto]';
+
+        console.log(`${logPrefix} ▶️ Đang tải trang từ ${url} để lấy security nonce...`);
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const html = await response.text();
+
+            const match = html.match(regex);
+            if (match && match[1]) {
+                const nonce = match[1];
+                console.log(`${logPrefix} ✅ Đã trích xuất thành công security nonce: ${nonce}`);
+                return nonce;
+            } else {
+                console.error(`${logPrefix} ❌ Không tìm thấy security nonce trong mã nguồn.`);
+                return null;
+            }
+        } catch (e) {
+            console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất nonce:`, e);
+            return null;
+        }
+    }
+
+
     // Lấy ID tài khoản
     function getAccountId() {
         if (typeof Better_Messages !== 'undefined' && Better_Messages.user_id) {
@@ -142,7 +178,7 @@
                 hoangvuc: { date: today, done: false, nextTime: null },
                 dothach: { betplaced: false, reward_claimed: false, turn: 1 },
                 luanvo: { date: today, battle_joined: false, auto_accept: false, done: false },
-                khoangmach: {date: today, done: false}
+                khoangmach: {date: today, done: false, nextTime: null}
             };
 
             if (accountData.lastUpdatedDate !== today) {
@@ -231,7 +267,7 @@
          * Điều chỉnh thời gian của một nhiệm vụ
          * @param {string} accountId - ID của tài khoản.
          * @param {string} taskName - Tên nhiệm vụ: 'thiluyen', 'bicanh', 'phucloi', 'hoangvuc'.
-         * @param {string} newTime - Thời gian mới theo định dạng `HH:mm:ss`.
+         * @param {string} newTime - Thời gian mới theo định dạng timestamp.
          * @return {void}
          */
         adjustTaskTime(accountId, taskName, newTime) {
@@ -250,51 +286,17 @@
         }
     }
 
-    /**
-     * Lấy security nonce một cách chung chung từ một URL.
-     *
-     * @param {string} url - URL của trang web cần lấy nonce.
-     * @param {RegExp} regex - Biểu thức chính quy (regex) để tìm và trích xuất nonce.
-     * @returns {Promise<string|null>} Trả về security nonce nếu tìm thấy, ngược lại trả về null.
-     */
-    async function getSecurityNonce(url, regex) {
-        // Sử dụng một tiền tố log cố định cho đơn giản
-        const logPrefix = '[HH3D Auto]';
-
-        console.log(`${logPrefix} ▶️ Đang tải trang từ ${url} để lấy security nonce...`);
-        try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const html = await response.text();
-
-            const match = html.match(regex);
-            if (match && match[1]) {
-                const nonce = match[1];
-                console.log(`${logPrefix} ✅ Đã trích xuất thành công security nonce: ${nonce}`);
-                return nonce;
-            } else {
-                console.error(`${logPrefix} ❌ Không tìm thấy security nonce trong mã nguồn.`);
-                return null;
-            }
-        } catch (e) {
-            console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất nonce:`, e);
-            return null;
-        }
-    }
-
 
     /**
      * Cộng thêm phút và giây vào thời điểm hiện tại và trả về một đối tượng Date mới.
      * @param {string} timeString - Chuỗi thời gian định dạng "mm:ss" (phút:giây).
-     * @returns {Date} - String dạng ISO cho thời gian được cộng thêm
+     * @returns {Date} - String dạng timestamp cho thời gian được cộng thêm
      */
     function timePlus(timeString) {
         const now = new Date();
         const [minutes, seconds] = timeString.split(':').map(Number);
         const millisecondsToAdd = (minutes * 60 + seconds) * 1000;
-        return new Date(now.getTime() + millisecondsToAdd).toISOString();
+        return now.getTime() + millisecondsToAdd;
         }
 
 
@@ -356,7 +358,7 @@
             }
 
             if (!foundAnswer) {
-                this.showNotification(`Vấn Đáp: Không tìm thấy đáp án cho câu hỏi: "${question.question}"`, 'error');
+                this.showNotification(`<b>Vấn Đáp:</b> Không tìm thấy đáp án cho câu hỏi: <i>${question.question}</i>`, 'error');
                 return false;
             }
 
@@ -367,8 +369,7 @@
             );
 
             if (answerIndex === -1) {
-                console.error(`[HH3D Vấn Đáp] ❌ Lỗi: Đáp án "${foundAnswer}" không có trong các lựa chọn của server.`);
-                this.showNotification(`Vấn Đáp: Câu hỏi: "${question.question}" không có đáp án đúng trong server.`, 'error');
+                this.showNotification(`Vấn Đáp: Câu hỏi: <i>${question.question}</i> không có đáp án đúng trong server.`, 'error');
                 return false;
             }
 
@@ -390,13 +391,11 @@
                 if (dataSubmit.success) {
                     return true;
                 } else {
-                    console.error(`[HH3D Vấn Đáp] ❌ Lỗi khi gửi đáp án:`, dataSubmit.message);
-                    this.showNotification(`Vấn Đáp: Lỗi khi gửi đáp án.`, 'error');
+                    this.showNotification(`Vấn Đáp: ${dataSubmit.message}`, 'error');
                     return false;
                 }
             } catch (error) {
-                console.error(`[HH3D Vấn Đáp] ❌ Lỗi mạng khi gửi đáp án:`, error);
-                this.showNotification(`Vấn Đáp: Lỗi mạng khi gửi đáp án.`, 'error');
+                this.showNotification(`Vấn Đáp: ${error.message}`, 'error');
                 return false;
             }
         }
@@ -437,7 +436,7 @@
                     const dataQuiz = await responseQuiz.json();
 
                     if (!dataQuiz.success || !dataQuiz.data) {
-                        this.showNotification(`Vấn Đáp: ${dataQuiz.data?.message || 'Lỗi khi lấy câu hỏi'}`, 'warn');
+                        this.showNotification(`Vấn Đáp: ${dataQuiz.data|| 'Lỗi khi lấy câu hỏi'}`, 'warn');
                         return;
                     }
 
@@ -664,7 +663,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    this.showNotification(`✅ Cược thành công vào ${stone.name}! Tỷ lệ x${stone.reward_multiplier}`, 'success');
+                    this.showNotification(`✅ Cược thành công vào ${stone.name}!<br>Tỷ lệ <b>x${stone.reward_multiplier}</b>`, 'success');
                     this._alreadyClaimedReward = false; // reset flag
                     return true;
                 } 
@@ -688,7 +687,7 @@
                 this._alreadyClaimedReward = false;
                 return false;
             } catch (e) {
-                this.showNotification(`❌ Lỗi mạng khi cược: ${e}`, 'error');
+                this.showNotification(`❌ Lỗi mạng khi cược: ${e.message}`, 'error');
                 this._alreadyClaimedReward = false;
                 return false;
             }
@@ -725,7 +724,7 @@
                 return false;
             } catch (e) {
                 console.error(e);
-                this.showNotification(`❌ Lỗi mạng khi nhận thưởng: ${e}`, 'error');
+                this.showNotification(`❌ Lỗi mạng khi nhận thưởng: ${e.message}`, 'error');
                 return false;
             }
         }
@@ -778,7 +777,7 @@
             const userBetCount = userBetStones.length;
 
             if (userBetCount >= 2) {
-                this.showNotification('[HH3D Đổ Thạch] ⚠️ Đã cược đủ 2 lần. Chờ phiên sau.', 'warn');
+                this.showNotification('[Đổ Thạch] ⚠️ Đã cược đủ 2 lần. Chờ phiên sau.', 'warn');
                 taskTracker.updateTask(accountId, 'dothach', 'betplaced', true);
                 return;
             }
@@ -787,7 +786,7 @@
             const availableStones = sortedStones.filter(stone => !stone.bet_placed);
 
             if (availableStones.length === 0) {
-                this.showNotification('[HH3D Đổ Thạch] ⚠️ Không còn đá nào để cược!', 'warn');
+                this.showNotification('[Đổ Thạch] ⚠️ Không còn đá nào để cược!', 'warn');
                 return;
             }
 
@@ -934,13 +933,14 @@
                 const { time, chest_level: chest_level_string } = dataTime.data;
                 const chest_level = parseInt(chest_level_string, 10);
 
-                if (time === '00:00') {
-                    if (chest_level >= 4) {
-                        showNotification('Phúc Lợi Đường đã hoàn tất hôm nay!', 'success');
-                        taskTracker.markTaskDone(accountId, 'phucloi');
-                        return;
-                    }
+                // Return khi mở đủ 4 chest
+                if (chest_level >= 4) {
+                    showNotification('Phúc Lợi Đường đã hoàn tất hôm nay!', 'success');
+                    taskTracker.markTaskDone(accountId, 'phucloi');
+                    return;
+                }
 
+                if (time === '00:00') {
                     // Bước 3: Nếu thời gian bằng 00:00, tiến hành mở rương
                     console.log(`[HH3D Phúc Lợi Đường] 🎁 Đang mở rương cấp ${chest_level + 1}...`);
                     const payloadOpen = new URLSearchParams();
@@ -961,22 +961,22 @@
                         showNotification(message, 'success');
                         if (message.includes('đã hoàn thành Phúc Lợi ngày hôm nay')) {
                             taskTracker.markTaskDone(accountId, 'phucloi');
-                        }
+                        } else taskTracker.adjustTaskTime(accountId,'phucloi', timePlus('30:00'));  //30 phút cho lần mở rương tiếp theo
                     } else {
                         const errorMessage = dataOpen.data && dataOpen.data.message ? dataOpen.data.message : 'Lỗi không xác định khi mở rương.';
                         showNotification(errorMessage, 'error');
                     }
                 } else {
                     // Trường hợp còn thời gian
-                    const message = `Vui lòng đợi ${time} để mở rương tiếp theo.`;
-                    showNotification(message, 'warn');
-                }
+                    showNotification(`Vui lòng đợi ${time} để mở rương tiếp theo.`, 'warn');
+                    taskTracker.adjustTaskTime(accountId,'phucloi', timePlus(time));
+                };
             } else {
                 const errorMessage = dataTime.data && dataTime.data.message ? dataTime.data.message : 'Lỗi không xác định khi lấy thời gian.';
                 showNotification(errorMessage, 'error');
             }
         } catch (e) {
-            showNotification(`Lỗi mạng khi thực hiện Phúc Lợi Đường: ${e}`, 'error');
+            showNotification(`Lỗi mạng khi thực hiện Phúc Lợi Đường: ${e.message}`, 'error');
         }
     }
 
@@ -1061,12 +1061,11 @@
                 }
                 else {
                     const message = response?.message || 'Không thể tấn công vào lúc này.';
-                    console.log(`${this.logPrefix} ⏳ ${message}`);
                     this.showNotification(`⏳ ${message}`, 'info');
                     return false;
                 }
             } catch (e) {
-                console.error(`${this.logPrefix} ❌ Lỗi kiểm tra cooldown:`, e);
+                this.showNotification(`${this.logPrefix} ❌ Lỗi kiểm tra cooldown: ${e.message}`, 'error');
                 return false;
             }
         }
@@ -1083,16 +1082,13 @@
                 const response = await this.sendApiRequest(endpoint, 'POST', nonce, {});
                 if (response && response.success) {
                     const message = response.message || `Gây ${response.damage} sát thương.`;
-                    console.log(`${this.logPrefix} ✅ ${message}`);
                     this.showNotification(message, 'success');
                 } else {
                     const errorMessage = response?.message || 'Lỗi không xác định khi tấn công.';
-                    console.error(`${this.logPrefix} ❌ Lỗi tấn công:`, errorMessage);
                     this.showNotification(errorMessage, 'error');
                 }
             } catch (e) {
-                console.error(`${this.logPrefix} ❌ Lỗi tấn công:`, e);
-                this.showNotification('Lỗi mạng khi tấn công boss Bí Cảnh.', 'error');
+                this.showNotification(`Lỗi mạng khi tấn công boss Bí Cảnh: ${e.messeage}`, 'error');
             }
         }
 
@@ -1453,22 +1449,23 @@
 
                     if (nextAttackTime.success && Date.now() >= nextAttackTime.data) {
                         // Thực hiện tấn công boss Hoang Vực, nếu thành công và còn 1 lượt tấn công thì đánh dấu nhiệm vụ hoàn thành
-                        if (await this.attackHoangVucBoss(boss.id, nonce) && this.remainingAttacks <= 1) {
+                        if (await this.attackHoangVucBoss(boss.id, nonce)){
+                            taskTracker.adjustTaskTime(accountId, 'hoangvuc', timePlus('15:02'));   //--------- 15 phút cho lần sau -----------//
+                            if (this.remainingAttacks <= 1) {
                             taskTracker.markTaskDone(accountId, 'hoangvuc');
-                        }
-
+                            };
+                        };
                     } else {
                         const remainingTime = nextAttackTime.data - Date.now();
                         const remainingSeconds = Math.floor(remainingTime / 1000);
                         const minutes = Math.floor(remainingSeconds / 60);
                         const seconds = remainingSeconds % 60;
-                        const message = `⏳ Cần chờ ${minutes} phút ${seconds} giây để tấn công tiếp theo.`;
-                        console.log(`${this.logPrefix} ${message}`);
+                        const message = `⏳ Cần chờ <b>${minutes} phút ${seconds} giây</b> để tấn công tiếp.`; ///////////////////
                         showNotification(message, 'info');
+                        taskTracker.adjustTaskTime(accountId, 'hoangvuc', nextAttackTime.data);
                     }
                 } else {
                     const errorMessage = bossInfoData.message || 'Lỗi không xác định khi lấy thông tin boss.';
-                    console.error(`${this.logPrefix} ❌ Lỗi:`, errorMessage);
                     showNotification(errorMessage, 'error');
                 }
             } catch (e) {
@@ -1545,7 +1542,8 @@
         }
 
         /**
-         * Lấy danh sách người chơi đang bật tự động chấp nhận.
+         * Lấy danh sách tất cả user đang theo dõi
+         * Gồm các phần: id, name, avatar, points, auto_accept, can_receive_count, profile_link, role, role_color, description, challenges_remaining, challenge_exists, challenge_id, is_following, is_joined_today, can_send_count, max_batch_count
          */
         async getFollowingUsers(nonce) {
             console.log(`${this.logPrefix} 🕵️ Đang lấy danh sách người theo dõi...`);
@@ -1555,57 +1553,77 @@
 
             if (data && data.success) {
                 console.log(`${this.logPrefix} ✅ Lấy danh sách thành công. Tìm thấy ${data.data.users.length} người dùng.`);
-                return data.data.users.filter(user => user.auto_accept === true);
+                return data.data.users
             } else {
                 const message = data?.message || 'Lỗi không xác định khi lấy danh sách người theo dõi.';
                 console.error(`${this.logPrefix} ❌ ${message}`);
                 return null;
             }
-        }
+        };
+
+        /**
+         * Lấy danh sách tất cả user đang theo dõi
+         * Gồm các phần: id, name, avatar, points, auto_accept, can_receive_count, profile_link, role, role_color, description, challenges_remaining, challenge_exists, challenge_id, is_following, is_joined_today, can_send_count, max_batch_count
+         */
+        async  getOnlineUsers(nonce) {
+            console.log("🟢 Đang lấy danh sách người dùng online...");
+            const endpoint = 'wp-json/luan-vo/v1/online-users';
+            const body = { page: 1 };
+
+            const data = await this.sendApiRequest(endpoint, 'POST', nonce, body);
+            if (data && data.success) {
+                console.log(`✅ Lấy danh sách thành công. Tìm thấy ${data.data.users.length} người online.`);
+                return data.data.users; // trả nguyên danh sách
+            } else {
+                const message = data?.message || "Lỗi không xác định khi lấy danh sách người dùng online.";
+                console.error(`❌ ${message}`);
+                return null;
+            };
+        };
 
         /**
          * Gửi yêu cầu khiêu chiến đến một người chơi cụ thể.
          */
-    async sendChallenge(userId, nonce) {
-        console.log(`${this.logPrefix} 🎯 Đang gửi khiêu chiến đến người chơi ID: ${userId}...`);
+        async sendChallenge(userId, nonce) {
+            console.log(`${this.logPrefix} 🎯 Đang gửi khiêu chiến đến người chơi ID: ${userId}...`);
 
-        const sendEndpoint = 'wp-json/luan-vo/v1/send-challenge';
-        const sendBody = { target_user_id: userId };
-        const sendResult = await this.sendApiRequest(sendEndpoint, 'POST', nonce, sendBody);
+            const sendEndpoint = 'wp-json/luan-vo/v1/send-challenge';
+            const sendBody = { target_user_id: userId };
+            const sendResult = await this.sendApiRequest(sendEndpoint, 'POST', nonce, sendBody);
 
-        if (sendResult && sendResult.success) {
-            console.log(`${this.logPrefix} 🎉 Gửi khiêu chiến thành công! Challenge ID: ${sendResult.data.challenge_id}`);
+            if (sendResult && sendResult.success) {
+                console.log(`${this.logPrefix} 🎉 Gửi khiêu chiến thành công! Challenge ID: ${sendResult.data.challenge_id}`);
 
-            // Bước mới: Kiểm tra nếu đối thủ bật auto_accept
-            if (sendResult.data.auto_accept) {
-                console.log(`${this.logPrefix} ✨ Đối thủ tự động chấp nhận, đang hoàn tất trận đấu...`);
+                // Bước mới: Kiểm tra nếu đối thủ bật auto_accept
+                if (sendResult.data.auto_accept) {
+                    console.log(`${this.logPrefix} ✨ Đối thủ tự động chấp nhận, đang hoàn tất trận đấu...`);
 
-                const approveEndpoint = 'wp-json/luan-vo/v1/auto-approve-challenge';
-                const approveBody = {
-                    challenge_id: sendResult.data.challenge_id,
-                    target_user_id: userId
-                };
+                    const approveEndpoint = 'wp-json/luan-vo/v1/auto-approve-challenge';
+                    const approveBody = {
+                        challenge_id: sendResult.data.challenge_id,
+                        target_user_id: userId
+                    };
 
-                const approveResult = await this.sendApiRequest(approveEndpoint, 'POST', nonce, approveBody);
+                    const approveResult = await this.sendApiRequest(approveEndpoint, 'POST', nonce, approveBody);
 
-                if (approveResult && approveResult.success) {
-                    showNotification(`[Luận võ] ${approveResult.data.message}!`, 'success');
-                    return true;
+                    if (approveResult && approveResult.success) {
+                        showNotification(`[Luận võ] ${approveResult.data.message}!`, 'success');
+                        return true;
+                    } else {
+                        const message = approveResult?.data?.message || 'Lỗi không xác định khi hoàn tất trận đấu.';
+                        showNotification(`❌ Lỗi hoàn tất trận đấu: ${message}`, 'error');
+                        return false;
+                    }
                 } else {
-                    const message = approveResult?.data?.message || 'Lỗi không xác định khi hoàn tất trận đấu.';
-                    showNotification(`❌ Lỗi hoàn tất trận đấu: ${message}`, 'error');
-                    return false;
+                    showNotification(`✅ Đã gửi khiêu chiến đến ${userId}! Đang chờ đối thủ chấp nhận.`, 'success');
+                    return true;
                 }
             } else {
-                showNotification(`✅ Đã gửi khiêu chiến đến ${userId}! Đang chờ đối thủ chấp nhận.`, 'success');
-                return true;
+                const message = sendResult?.data?.message || 'Lỗi không xác định.';
+                showNotification(`❌ Gửi khiêu chiến thất bại: ${message}`, 'error');
+                return false;
             }
-        } else {
-            const message = sendResult?.data?.message || 'Lỗi không xác định.';
-            showNotification(`❌ Gửi khiêu chiến thất bại: ${message}`, 'error');
-            return false;
         }
-    }
 
         /**
          * Hiện hộp thoại và chuyển hướng đến trang Luận Võ trên tab hiện tại.
@@ -1690,41 +1708,66 @@
                 return;
             }
 
-            // vòng lặp gửi khiêu chiến
+            // Vòng lặp gửi khiêu chiến
             let challengesSent = 0;
+            let shouldAttackOnline = false;
 
-            let myCanSend = 0;
-            let users = [];
+            while (true) {
+                let allFollowingUsers = await this.getFollowingUsers(nonce);
+                let myCanSend = allFollowingUsers[0]?.can_send_count ?? 0;
 
-            do {
-                users = await this.getFollowingUsers(nonce);
-                let myCanSend = users[0]?.can_send_count ?? 0;
+                if (myCanSend <= 0) break;
 
-                if (!users || users.length === 0) {
-                    showNotification('ℹ️ Bạn chưa có ai để khiêu chiến.', 'info');
-                    break;
+                // Lọc những user có thể khiêu chiến (auto_accept + còn lượt)
+                let canChallengeUsers = allFollowingUsers.filter(u => u.auto_accept && u.can_receive_count > 0);
+
+                if (canChallengeUsers.length > 0) {
+                    // Khiêu chiến user đầu tiên
+                    const success = await this.sendChallenge(canChallengeUsers[0].id, nonce);
+                    if (success) {
+                        challengesSent++;
+                        myCanSend--;
+                        await this.delay(4500);
+                    }
+                    continue; // quay lại kiểm tra following
                 }
 
-                for (const user of users) {
-                    // gửi liên tục cho user hiện tại đến khi họ hết lượt hoặc bạn hết lượt
-                    while (myCanSend > 0 && user.challenges_remaining > 0) {
-                        const success = await this.sendChallenge(user.id, nonce);
+                // Nếu không còn ai có auto_accept, kiểm tra những người còn lượt
+                let canReceiveUsers = allFollowingUsers.filter(u => u.can_receive_count > 0);
+
+                if (canReceiveUsers.length === 0) {
+                    shouldAttackOnline = true;
+                }
+
+                // Nếu không còn ai để khiêu chiến từ following và user đồng ý, tấn công online
+                if (shouldAttackOnline) {
+                    const attackOnline = confirm('Dnah sách theo dõi không còn ai khiêu chiến được, tiến hành khiêu chiến người chơi online?');
+                    if (!attackOnline) break;
+
+                    while (myCanSend > 0) {
+                        let allOnlineUsers = await this.getOnlineUsers(nonce);
+                        if (!allOnlineUsers || allOnlineUsers.length === 0) break;
+
+                        const success = await this.sendChallenge(allOnlineUsers[0].id, nonce);
                         if (success) {
                             challengesSent++;
                             myCanSend--;
-                            await this.delay(4500); // delay giữa các lượt
+                            await this.delay(4500);
                         }
                     }
+                    break; // xong tấn công online, thoát vòng lặp
                 }
 
-            } while (myCanSend > 0);
+                // Nếu vẫn còn lượt nhưng không ai để khiêu chiến, dừng vòng lặp
+                if (myCanSend <= 0) break;
+            }
 
             showNotification(`✅ Hoàn thành! Đã gửi ${challengesSent} khiêu chiến.`, 'success');
 
             // Bước 5: Nhận thưởng nếu có
             const rewardResult = await this.receiveReward(nonce);
         }
-    }
+    };
 
     class KhoangMach {
         constructor() {
@@ -1920,7 +1963,7 @@
                 const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
                 const d = await r.json();
                 if (d.success) {
-                    showNotification('Mua Linh Quang Phù thành công', 'success');
+                    showNotification(d.message, 'success');
                     return true;
                 } else {
                     showNotification(d.message || 'Lỗi mua vật phẩm.', 'error');
@@ -2003,7 +2046,8 @@
                 console.log(`[Khoáng mạch] Vị trí: ${myIndex}, Tên: ${myInfo.name}, Time: ${myInfo.time_spent}`);
 
                 if (myInfo.time_spent !== "Đạt tối đa") {
-                    showNotification(`Khoáng mạch chưa đủ thời gian.\nHiện đạt: ${myInfo.time_spent}`, 'warn');
+                    
+                    showNotification(`Khoáng mạch chưa đủ thời gian.<br>Hiện đạt: <b>${myInfo.time_spent}</b>`, 'warn');
                     // Có thể thêm delay để tránh spam server
                     break;
                 }
@@ -2127,7 +2171,11 @@
         // Tạo item thông báo
         const notification = document.createElement('div');
         notification.className = `hh3d-notification-item ${type}`;
-        notification.innerText = message;
+        if (/<[a-z][\s\S]*>/i.test(message)) {
+            notification.innerHTML = message; // có HTML
+        } else {
+            notification.innerText = message; // chỉ text
+        }
 
         container.appendChild(notification);
 
@@ -2826,7 +2874,7 @@
                                     console.log('[HH3D Script] ✅ Tất cả nhiệm vụ đã hoàn thành.');
                                     if (taskTracker.isTaskDone(accountId, 'diemdanh')) {
                                         autoTaskButton.disabled = true;
-                                        autoTaskButton.textContent = 'Đã hoàn thành Điểm danh - Tế lễ - Vấn đáp';
+                                        autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp ✅';
                                     } else {
                                         autoTaskButton.disabled = false;
                                         autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
@@ -2835,7 +2883,7 @@
                                 groupDiv.appendChild(autoTaskButton);
                                 if (taskTracker.isTaskDone(accountId, 'diemdanh')) {
                                     autoTaskButton.disabled = true;
-                                    autoTaskButton.textContent = 'Đã hoàn thành Điểm danh - Tế lễ - Vấn đáp';
+                                    autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp ✅';
                                 }
                             } else if (link.isDiceRoll) {
                                 groupDiv.className = 'custom-script-menu-group-dice-roll';

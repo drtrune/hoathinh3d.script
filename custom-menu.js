@@ -81,10 +81,13 @@
 
     //Lấy Nonce
     async function getNonce() {
+        showNotification('Bắt đầu get nonce', 'info')
         if (typeof Better_Messages !== 'undefined' && Better_Messages.nonce) {
             return Better_Messages.nonce;
         }
+        showNotification(`Đã lấy nonce: ${nonce}`, 'info')
         if (!nonce) {
+            showNotification('Lấy nonce thất bại, đang dùng hàm getSecurityNonce', 'info')
             nonce = await getSecurityNonce(weburl+'?t', /customRestNonce\s*=\s*'([a-f0-9]+)'/);
             if (nonce) {
                 return nonce;
@@ -104,7 +107,8 @@
         // Sử dụng một tiền tố log cố định cho đơn giản
         const logPrefix = '[HH3D Auto]';
 
-        console.log(`${logPrefix} ▶️ Đang tải trang từ ${url} để lấy security nonce...`);
+        //console.log(`${logPrefix} ▶️ Đang tải trang từ ${url} để lấy security nonce...`);
+        showNotification(`${logPrefix} ▶️ Đang tải trang từ ${url} để lấy security nonce...`, 'info');
         try {
             const response = await fetch(url);
             if (!response.ok) {
@@ -115,14 +119,17 @@
             const match = html.match(regex);
             if (match && match[1]) {
                 const nonce = match[1];
-                console.log(`${logPrefix} ✅ Đã trích xuất thành công security nonce: ${nonce}`);
+                //console.log(`${logPrefix} ✅ Đã trích xuất thành công security nonce: ${nonce}`);
+                showNotification(`${logPrefix} ✅ Đã trích xuất thành công security nonce: ${nonce}`, 'info');
                 return nonce;
             } else {
-                console.error(`${logPrefix} ❌ Không tìm thấy security nonce trong mã nguồn.`);
+                //console.error(`${logPrefix} ❌ Không tìm thấy security nonce trong mã nguồn.`);
+                showNotification(`${logPrefix} ❌ Không tìm thấy security nonce trong mã nguồn.`, 'info');
                 return null;
             }
         } catch (e) {
-            console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất nonce:`, e);
+            //console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất nonce:`, e);
+            showNotification(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất nonce: ${e.message}`, 'info');
             return null;
         }
     }

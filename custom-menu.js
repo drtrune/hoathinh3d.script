@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.6.2
+// @version       2.7
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -62,7 +62,7 @@
         name: 'Bảng hoạt động ngày',
         links: [{
             text: 'Bảng hoạt động ngày',
-            url: weburl + 'bang-hoat-dong-ngay'
+            url: weburl + 'bang-hoat-dong-ngay?t'
         }, ]
     }, {
         name: 'Đổ Thạch',
@@ -81,13 +81,11 @@
 
     //Lấy Nonce
     async function getNonce() {
-        showNotification('Bắt đầu get nonce', 'info')
+        let nonce = null;
         if (typeof Better_Messages !== 'undefined' && Better_Messages.nonce) {
             return Better_Messages.nonce;
         }
-        showNotification(`Đã lấy nonce: ${nonce}`, 'info')
         if (!nonce) {
-            showNotification('Lấy nonce thất bại, đang dùng hàm getSecurityNonce', 'info')
             nonce = await getSecurityNonce(weburl+'?t', /customRestNonce\s*=\s*'([a-f0-9]+)'/);
             if (nonce) {
                 return nonce;
@@ -107,8 +105,7 @@
         // Sử dụng một tiền tố log cố định cho đơn giản
         const logPrefix = '[HH3D Auto]';
 
-        //console.log(`${logPrefix} ▶️ Đang tải trang từ ${url} để lấy security nonce...`);
-        showNotification(`${logPrefix} ▶️ Đang tải trang từ ${url} để lấy security nonce...`, 'info');
+        console.log(`${logPrefix} ▶️ Đang tải trang từ ${url} để lấy security nonce...`);
         try {
             const response = await fetch(url);
             if (!response.ok) {
@@ -119,17 +116,14 @@
             const match = html.match(regex);
             if (match && match[1]) {
                 const nonce = match[1];
-                //console.log(`${logPrefix} ✅ Đã trích xuất thành công security nonce: ${nonce}`);
-                showNotification(`${logPrefix} ✅ Đã trích xuất thành công security nonce: ${nonce}`, 'info');
+                console.log(`${logPrefix} ✅ Đã trích xuất thành công security nonce: ${nonce}`);
                 return nonce;
             } else {
-                //console.error(`${logPrefix} ❌ Không tìm thấy security nonce trong mã nguồn.`);
-                showNotification(`${logPrefix} ❌ Không tìm thấy security nonce trong mã nguồn.`, 'info');
+                console.error(`${logPrefix} ❌ Không tìm thấy security nonce trong mã nguồn.`);
                 return null;
             }
         } catch (e) {
-            //console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất nonce:`, e);
-            showNotification(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất nonce: ${e.message}`, 'info');
+            console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất nonce:`, e);
             return null;
         }
     }
@@ -599,7 +593,7 @@
             this.webUrl = weburl;
             this.getSecurityNonce = getSecurityNonce;
             this.showNotification = showNotification;
-            this.doThachUrl = this.webUrl + 'do-thach-hh3d';
+            this.doThachUrl = this.webUrl + 'do-thach-hh3d?t';
         }
 
         // --- Các phương thức private để gọi API và lấy nonce ---
@@ -845,7 +839,7 @@
         console.log('[HH3D Thí Luyện Tông Môn] ▶️ Bắt đầu Thí Luyện Tông Môn');
 
         // Bước 1: Lấy security nonce.
-        const securityNonce = await getSecurityNonce(weburl + 'thi-luyen-tong-mon-hh3d', /action: 'open_chest_tltm',\s*security: '([a-f0-9]+)'/);
+        const securityNonce = await getSecurityNonce(weburl + 'thi-luyen-tong-mon-hh3d?t', /action: 'open_chest_tltm',\s*security: '([a-f0-9]+)'/);
         if (!securityNonce) {
             showNotification('Lỗi khi lấy security nonce cho Thí Luyện Tông Môn.', 'error');
             return;
@@ -908,7 +902,7 @@
         console.log('[HH3D Phúc Lợi Đường] ▶️ Bắt đầu nhiệm vụ Phúc Lợi Đường.');
 
         // Bước 1: Lấy security nonce từ trang Phúc Lợi Đường
-        const securityNonce = await getSecurityNonce(weburl + 'phuc-loi-duong', /action: 'get_next_time_pl',\s*security: '([a-f0-9]+)'/);
+        const securityNonce = await getSecurityNonce(weburl + 'phuc-loi-duong?t', /action: 'get_next_time_pl',\s*security: '([a-f0-9]+)'/);
         if (!securityNonce) {
             showNotification('Lỗi khi lấy security nonce cho Phúc Lợi Đường.', 'error');
             return;
@@ -1025,7 +1019,7 @@
          * @returns {Promise<string|null>} Nonce bảo mật hoặc null nếu lỗi.
          */
         async getNonce() {
-            const nonce = await getSecurityNonce(weburl + 'bi-canh-tong-mon', /"nonce":"([a-f0-9]+)"/);
+            const nonce = await getSecurityNonce(weburl + 'bi-canh-tong-mon?t', /"nonce":"([a-f0-9]+)"/);
             if (nonce) {
                 return nonce;
             } else {
@@ -1058,12 +1052,13 @@
                 else if (response.success && response.message === 'Không có boss để tấn công') {
                     const rewardResponse = await this.sendApiRequest('wp-json/tong-mon/v1/claim-boss-reward', 'POST', nonce, {});
                     if (rewardResponse && rewardResponse.success) {
-                        showNotification(rewardResponse.message, 'success');
-                    }
+                        showNotification(rewardResponse.message, 'success')
+                    };
                     const contributionResponse = await this.sendApiRequest('wp-json/tong-mon/v1/contribute-boss', 'POST', nonce, {});
-                    if (contributionResponse && contributionResponse.success) {
-                        showNotification(contributionResponse.message, 'success');
-                    }
+                    if (contributionResponse) {
+                        if (contributionResponse.success) {showNotification(contributionResponse.message, 'success')}
+                        else {showNotification(contributionResponse.message, 'warn')}
+                    } else
                     return false;
                 }
                 else {
@@ -1173,7 +1168,7 @@
          * Lấy nguyên tố của người dùng từ trang Hoang Vực.
          */
         async getMyElement() {
-            const url = weburl + 'hoang-vuc';
+            const url = weburl + 'hoang-vuc?t';
             const response = await fetch(url);
             const text = await response.text();
             const regex = /<img id="user-nguhanh-image".*?src=".*?ngu-hanh-(.*?)\.gif"/;
@@ -1391,7 +1386,7 @@
         async doHoangVuc(maximizeDamage = true) {
             console.log(`${this.logPrefix} ▶️ Bắt đầu nhiệm vụ với chiến lược: ${maximizeDamage ? 'Tối đa hóa Sát thương' : 'Không giảm Sát thương'}.`);
 
-            const hoangVucUrl = `${weburl}hoang-vuc`;
+            const hoangVucUrl = `${weburl}hoang-vuc?t`;
             //const nonce = await getSecurityNonce(hoangVucUrl, /var ajax_boss_nonce = '([a-f0-9]+)'/);
             const { remainingAttacks, nonce } = await this.getNonceAndRemainingAttacks(hoangVucUrl);
 
@@ -1636,7 +1631,7 @@
          * Hiện hộp thoại và chuyển hướng đến trang Luận Võ trên tab hiện tại.
          */
         async goToLuanVoPage() {
-            const luanVoUrl = `${weburl}/luan-vo-duong`;
+            const luanVoUrl = `${weburl}/luan-vo-duong?t`;
 
             if (confirm("Bạn có muốn chuyển đến trang Luận Võ Đường không?")) {
                 window.location.href = luanVoUrl;
@@ -1779,7 +1774,7 @@
     class KhoangMach {
         constructor() {
             this.ajaxUrl = ajaxUrl;
-            this.khoangMachUrl = weburl + 'khoang-mach';
+            this.khoangMachUrl = weburl + 'khoang-mach?t';
             this.logPrefix = '[Khoáng Mạch]';
             this.headers = {
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -1908,31 +1903,66 @@
 
 
         async enterMine(mineId) {
-            const nonce1 = await this.#getNonce(/action: 'enter_mine',\s*mine_id:\s*mine_id,\s*security: '([a-f0-9]+)'/);
-            const nonce2 = await this.#getNonce(/var security_km = '([a-f0-9]+)'/);
+            // Lấy nonce
+            const [nonce1, nonce2] = await Promise.all([
+                this.#getNonce(/action: 'enter_mine',\s*mine_id:\s*mine_id,\s*security: '([a-f0-9]+)'/),
+                this.#getNonce(/var security_km = '([a-f0-9]+)'/)
+            ]);
+
             if (!nonce1 || !nonce2) {
                 showNotification('Lỗi nonce (enter_mine).', 'error');
                 return false;
             }
-            const payload = new URLSearchParams({ action: 'enter_mine', mine_id: mineId, security: nonce1, security_km: nonce2 });
+
+            // Hàm gửi request
+            const post = async (payload) => {
+                const r = await fetch(this.ajaxUrl, {
+                    method: 'POST',
+                    headers: this.headers,
+                    body: new URLSearchParams(payload),
+                    credentials: 'include'
+                });
+                return r.json();
+            };
+
             try {
-                const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
-                const d = await r.json();
+                const d = await post({ action: 'enter_mine', mine_id: mineId, security: nonce1, security_km: nonce2 });
+
                 if (d.success) {
                     showNotification(d.data.message, 'success');
                     return true;
-                } else {
-                    showNotification(d.data.message || 'Lỗi vào mỏ.', 'error');
-                    if (d.data.message === 'Đạo hữu đã đạt đủ thưởng ngày và không thể vào Khoáng Mạch cho đến ngày mai.') {
-                        taskTracker.markTaskDone(accountId, 'khoangmach');
-                    }
-                    return false;
                 }
+
+                const msg = d.data.message || 'Lỗi vào mỏ.';
+
+                if (msg.includes('đạt đủ thưởng ngày')) {
+                    taskTracker.markTaskDone(accountId, 'khoangmach');
+                    showNotification(msg, 'error');
+                } 
+                else if (msg.includes('Có phần thưởng chưa nhận')) {
+                    // Nếu bị sát hại tại khoáng mạch → nhận thưởng trước
+                    const nonce = await this.#getNonce(/action: 'claim_reward_km',\s*security: '([a-f0-9]+)'/);
+                    if (!nonce) {
+                        showNotification('Lỗi nonce (claim_reward_km).', 'error');
+                        return false;
+                    }
+
+                    const reward = await post({ action: 'claim_reward_km', security: nonce });
+                    if (reward.success) {
+                        showNotification(`Nhận thưởng <b>${reward.data.total_tuvi} tu vi và ${reward.data.total_tinh_thach} tinh thạch</b> tại khoáng mạch ${reward.data.mine_name}`, 'info');
+                        return this.enterMine(mineId); // gọi lại để vào mỏ
+                    } else {
+                        showNotification('Lỗi nhận thưởng khi bị đánh ra khỏi mỏ khoáng', 'warn');
+                    }
+                }
+
             } catch (e) {
                 console.error(`${this.logPrefix} ❌ Lỗi mạng (vào mỏ):`, e);
                 return false;
             }
         }
+
+
 
         async getUsersInMine(mineId) {
             const nonce = await this.#getNonce(/action: 'get_users_in_mine',\s*mine_id:\s*mine_id,\s*security: '([a-f0-9]+)'/);
@@ -1970,10 +2000,10 @@
                 const r = await fetch(this.ajaxUrl, { method: 'POST', headers: this.headers, body: payload, credentials: 'include' });
                 const d = await r.json();
                 if (d.success) {
-                    showNotification(d.message, 'success');
+                    showNotification(d.data.message || 'Đã mua Linh Quang Phù', 'success');
                     return true;
                 } else {
-                    showNotification(d.message || 'Lỗi mua vật phẩm.', 'error');
+                    showNotification(d.data.message || 'Lỗi mua Linh Quang Phù', 'error');
                     return false;
                 }
             } catch (e) { console.error(`${this.logPrefix} ❌ Lỗi mạng (mua buff):`, e); return false; }
@@ -2043,6 +2073,16 @@
                     return;
                 }
 
+                // Kiểm tra ngoại tông
+                let outer = users.some(u => !u.lien_minh && !u.dong_mon);
+                if (outer) {
+                    if (confirm('Ngoại tông xâm nhập khoáng mạch, \n Bạn có muốn đến khoáng mạch?')){
+                        window.location.href = this.khoangMachUrl;
+                        break;
+                    }
+                }
+
+                // Kiểm tra vị trí trong mỏ
                 let myIndex = users.findIndex(u => u.id.toString() === accountId.toString());
                 if (myIndex === -1) {
                     console.log(`[Khoáng mạch] Kiểm tra vị trí. Bạn chưa vào mỏ ${targetMine.name}.`);
@@ -2052,6 +2092,7 @@
                 let myInfo = users[myIndex];
                 console.log(`[Khoáng mạch] Vị trí: ${myIndex}, Tên: ${myInfo.name}, Time: ${myInfo.time_spent}`);
 
+                // Kiểm tra thời gian
                 if (myInfo.time_spent !== "Đạt tối đa") {
                     
                     showNotification(`Khoáng mạch chưa đủ thời gian.<br>Hiện đạt: <b>${myInfo.time_spent}</b>`, 'warn');
@@ -2059,6 +2100,7 @@
                     break;
                 }
 
+                // Kiểm tra trạng thái bonus
                 let bonus = usersInfo.bonus_percentage || 0;
                 let canClaim = false;
                 if (rewardMode === "any") {
@@ -2071,7 +2113,7 @@
 
                 if (canClaim) {
                     console.log(`[Khoáng mạch] Nhận thưởng tại mỏ ${targetMine.id}, bonus=${bonus}%`);
-                    await this.claimReward(targetMine.id);
+                    await this.claimReward(targetMine.id);  // Nhận thưởng
                     break; // Thoát vòng lặp sau khi nhận thưởng
                 } else {
                     console.log(`[Khoáng mạch] Bonus tu vi ${bonus}% chưa đạt ngưỡng ${rewardMode}`);

@@ -131,7 +131,7 @@
 
     // Lấy ID tài khoản
     async function getAccountId() {
-        let accountId = null;
+        let Id = null;
 
         if (typeof Better_Messages !== 'undefined' && Better_Messages.user_id) {
             return Better_Messages.user_id;
@@ -140,11 +140,11 @@
         if (!accountId) {
             // Regex bắt cả "user_id":"123" hoặc current_user_id: '123'
             const regex = /(?:"user_id"\s*:\s*"(\d+)"|current_user_id\s*:\s*'(\d+)')/;
-            accountId = await getSecurityNonce(weburl + '?t', regex);
+            Id = await getSecurityNonce(weburl + '?t', regex);
 
-            if (accountId) {
+            if (Id) {
                 // Nếu regex có 2 nhóm, lấy cái nào tồn tại
-                return accountId[1] || accountId[2];
+                return Id[1] || Id[2];
             }
         }
 
@@ -1431,6 +1431,7 @@
                         return;
                     } else if (boss.created_date === new Date().toISOString().slice(0, 10) && boss.health === boss.max_health) {
                         showNotification('Boss Hoang vực đã bị phong ấn', 'info');
+                        taskTracker.markTaskDone(accountId, 'hoangvuc');
                         return;
                     }
 
@@ -3085,13 +3086,17 @@
     // KHỞI TẠO SCRIPT
     // ===============================================
     const taskTracker = new TaskTracker();
-    const accountId = await getAccountId();
-        if (accountId) {
-            let accountData = taskTracker.getAccountData(accountId)
-            console.log(`[HH3D Script] ✅ Đã lấy dữ liệu tài khoản: ${JSON.stringify(accountData)}`);
+    let accountId = null;
+    getAccountId().then(Id => {
+        if (Id) {
+            accountId =  Id;
+            let accountData = taskTracker.getAccountData(accountId);
+            console.log(`[HH3D] ✅ Account ID: ${accountId}`);
+            console.log(`[HH3D] ✅ Đã lấy dữ liệu tài khoản: ${JSON.stringify(accountData)}`);
         } else {
-            console.warn('[HH3D Script] ⚠️ Không thể lấy ID tài khoản. Một số tính năng có thể không hoạt động.');
+            console.warn('[HH3D] ⚠️ Không thể lấy ID tài khoản.');
         }
+    });
     const vandap = new VanDap();
     const dothach = new DoThach();
     const hoangvuc = new HoangVuc();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.7
+// @version       2.7.1
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -130,10 +130,24 @@
 
 
     // Lấy ID tài khoản
-    function getAccountId() {
+    async function getAccountId() {
+        let accountId = null;
+
         if (typeof Better_Messages !== 'undefined' && Better_Messages.user_id) {
             return Better_Messages.user_id;
         }
+
+        if (!accountId) {
+            // Regex bắt cả "user_id":"123" hoặc current_user_id: '123'
+            const regex = /(?:"user_id"\s*:\s*"(\d+)"|current_user_id\s*:\s*'(\d+)')/;
+            accountId = await getSecurityNonce(weburl + '?t', regex);
+
+            if (accountId) {
+                // Nếu regex có 2 nhóm, lấy cái nào tồn tại
+                return accountId[1] || accountId[2];
+            }
+        }
+
         return null;
     }
     // Lưu trữ trạng thái các hoạt động đã thực hiện
@@ -168,7 +182,7 @@
             }
 
             const accountData = this.data[accountId];
-            const today = new Date().toDateString();
+           const today = new Date(Date.now() + 7 * 60 * 60 * 1000).toDateString(); //Giờ VN
 
             // Danh sách tất cả nhiệm vụ mặc định
             const defaultTasks = {
@@ -201,8 +215,10 @@
             }
 
             // Xử lý Đổ Thạch lượt 2
-            const currentTime = new Date();
-            if (accountData.dothach.turn === 1 && currentTime.getHours() >= 16) {
+            const now = new Date();
+            const hourInVN = (now.getUTCHours() + 7) % 24; // Giờ Việt Nam (GMT+7)
+
+            if (accountData.dothach.turn === 1 && hourInVN >= 16) {
                 accountData.dothach = {
                     betplaced: false,
                     reward_claimed: false,
@@ -443,9 +459,7 @@
 
                     if (dataQuiz.data.completed) {
                         this.showNotification('Đã hoàn thành vấn đáp hôm nay.', 'success');
-                        if (this.taskTracker && accountId) {
-                            this.taskTracker.markTaskDone(accountId, 'diemdanh');
-                        }
+                        taskTracker.markTaskDone(accountId, 'diemdanh');
                         return;
                     }
 
@@ -718,6 +732,7 @@
                 if (data.success) {
                     const rewardMessage = data.data?.message || `Nhận thưởng thành công!`;
                     this.showNotification(rewardMessage, 'success');
+                    taskTracker.updateTask(accountId, 'dothach', 'reward_claimed', 'true')
                     return true;
                 }
                 const errorMessage = data.data?.message || 'Lỗi không xác định khi nhận thưởng.';
@@ -3070,7 +3085,7 @@
     // KHỞI TẠO SCRIPT
     // ===============================================
     const taskTracker = new TaskTracker();
-    const accountId = getAccountId();
+    const accountId = await getAccountId();
         if (accountId) {
             let accountData = taskTracker.getAccountData(accountId)
             console.log(`[HH3D Script] ✅ Đã lấy dữ liệu tài khoản: ${JSON.stringify(accountData)}`);

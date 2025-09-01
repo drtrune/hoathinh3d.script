@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.7.1
+// @version       2.7.2
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -9,7 +9,7 @@
 // @grant         GM_xmlhttpRequest
 // @connect       raw.githubusercontent.com
 // ==/UserScript==
-(function() {
+(async function() {
     'use strict';
 
     console.log('%c[HH3D Script] Tải thành công. Đang khởi tạo UI tùy chỉnh.', 'background: #222; color: #bada55; padding: 2px 5px; border-radius: 3px;');
@@ -131,25 +131,33 @@
 
     // Lấy ID tài khoản
     async function getAccountId() {
-        let Id = null;
+        const html = document.documentElement.innerHTML;
+        const regexList = [
+            /"user_id"\s*:\s*"(\d+)"/,       // "user_id":"123"
+            /current_user_id\s*:\s*'(\d+)'/  // current_user_id: '123'
+        ];
 
-        if (typeof Better_Messages !== 'undefined' && Better_Messages.user_id) {
-            return Better_Messages.user_id;
+        // --- Thử lấy trực tiếp từ DOM ---
+        for (const regex of regexList) {
+            const match = html.match(regex);
+            if (match) {
+                console.log('Lấy account ID trực tiếp từ html');
+                return match[1];
+            }
         }
 
-        if (!accountId) {
-            // Regex bắt cả "user_id":"123" hoặc current_user_id: '123'
-            const regex = /(?:"user_id"\s*:\s*"(\d+)"|current_user_id\s*:\s*'(\d+)')/;
-            Id = await getSecurityNonce(weburl + '?t', regex);
-
-            if (Id) {
-                // Nếu regex có 2 nhóm, lấy cái nào tồn tại
-                return Id[1] || Id[2];
+        // --- Fallback: thử fetch trang chính với từng regex ---
+        for (const regex of regexList) {
+            const id = await getSecurityNonce(weburl + '?t', regex);
+            if (id) {
+                console.log('Lấy account ID qua fetch fallback');
+                return id;
             }
         }
 
         return null;
     }
+    
     // Lưu trữ trạng thái các hoạt động đã thực hiện
     class TaskTracker {
         constructor(storageKey = 'dailyTasks') {
@@ -3086,17 +3094,14 @@
     // KHỞI TẠO SCRIPT
     // ===============================================
     const taskTracker = new TaskTracker();
-    let accountId = null;
-    getAccountId().then(Id => {
-        if (Id) {
-            accountId =  Id;
+    const accountId = await getAccountId();
+        if (accountId) {
             let accountData = taskTracker.getAccountData(accountId);
             console.log(`[HH3D] ✅ Account ID: ${accountId}`);
             console.log(`[HH3D] ✅ Đã lấy dữ liệu tài khoản: ${JSON.stringify(accountData)}`);
         } else {
             console.warn('[HH3D] ⚠️ Không thể lấy ID tài khoản.');
         }
-    });
     const vandap = new VanDap();
     const dothach = new DoThach();
     const hoangvuc = new HoangVuc();

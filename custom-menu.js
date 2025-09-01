@@ -26,6 +26,12 @@
     let userBetStones = [];
     // Cấu trúc menu đã được cập nhật để chỉ có một nút Điểm danh - Tế lễ - Vấn đáp
     const LINK_GROUPS = [{
+        name: 'Autorun',
+        links: [{
+            text: 'Autorun',
+            isAutorun: true
+        }]
+    }, {
         name: 'Điểm danh, Tế lễ, Vấn đáp',
         links: [{
             text: 'Điểm danh - Tế lễ - Vấn đáp',
@@ -81,16 +87,27 @@
 
     //Lấy Nonce
     async function getNonce() {
-        let nonce = null;
-        if (typeof Better_Messages !== 'undefined' && Better_Messages.nonce) {
-            return Better_Messages.nonce;
+        if (typeof customRestNonce !== 'undefined' && customRestNonce) {
+            return customRestNonce;
         }
-        if (!nonce) {
-            nonce = await getSecurityNonce(weburl+'?t', /customRestNonce\s*=\s*'([a-f0-9]+)'/);
+
+        const scripts = document.querySelectorAll('script');
+        for (const script of scripts) {
+            const match = script.innerHTML.match(/customRestNonce\s*=\s*'([a-f0-9]+)'/);
+            if (match) {
+                return match[1];
+            }
+        }
+
+        try {
+            const nonce = await getSecurityNonce(weburl + '?t', /customRestNonce\s*=\s*'([a-f0-9]+)'/);
             if (nonce) {
                 return nonce;
             }
+        } catch (error) {
+            console.error("Failed to get security nonce", error);
         }
+
         return null;
     }
 
@@ -201,7 +218,8 @@
                 hoangvuc: { date: today, done: false, nextTime: null },
                 dothach: { betplaced: false, reward_claimed: false, turn: 1 },
                 luanvo: { date: today, battle_joined: false, auto_accept: false, done: false },
-                khoangmach: {date: today, done: false, nextTime: null}
+                khoangmach: {date: today, done: false, nextTime: null},
+                tienduyen: {last_check: null}
             };
 
             if (accountData.lastUpdatedDate !== today) {
@@ -307,7 +325,30 @@
 
         getNextTime(accountId, taskName) {
             const accountData = this.getAccountData(accountId);
-            return accountData[taskName].nexTime;
+            const ts = accountData[taskName]?.nexTime;
+            if (!ts || ts === "null") {
+                return null; // chưa có thời gian
+            }
+            const date = new Date(Number(ts));
+            return isNaN(date.getTime()) ? null : date;
+        }
+
+
+        /** Return dạng Date */
+        getLastCheckTienDuyen(accountId) {
+            const accountData = this.getTaskStatus(accountId, 'tienduyen');
+            const timestamp = Number(accountData.last_check); // Chuyển chuỗi miligiây thành số
+            return new Date(timestamp); // Tạo đối tượng Date
+        }
+
+        /** Lấy cả timstamp dạng string hay Date đều được */
+        setLastCheckTienDuyen(accountId, timestamp) {
+            let finalTimestamp = timestamp; // Khởi tạo biến lưu giá trị cuối cùng
+            // Kiểm tra nếu timestamp là một đối tượng Date
+            if (timestamp instanceof Date) {
+                finalTimestamp = timestamp.getTime(); // Lấy giá trị timestamp dạng số
+            }
+            this.updateTask(accountId, 'tienduyen', 'last_check', finalTimestamp);
         }
     }
 
@@ -340,8 +381,8 @@
         }
 
         /**
-         * Tải dữ liệu đáp án từ nguồn GitHub.
-         * Dữ liệu được lưu vào cache để tránh các lần tìm nạp không cần thiết.
+         * * Tải dữ liệu đáp án từ nguồn GitHub.
+         * * Dữ liệu được lưu vào cache để tránh các lần tìm nạp không cần thiết.
          */
         async loadAnswersFromGitHub() {
             if (this.questionDataCache) {
@@ -1024,13 +1065,13 @@
             const nonce = await this.getNonce();
             if (!nonce) {
                 this.showNotification('Lỗi: Không thể lấy nonce cho Bí Cảnh Tông Môn.', 'error');
-                return;
+                throw new Error ('Lỗi nonce bí cảnh');
             }
 
             // Bước 2: Kiểm tra thời gian hồi
             const canAttack = await this.checkAttackCooldown(nonce);
             if (!canAttack) {
-                return;
+                throw new Error ('Không thể tấn công bí cảnh');
             }
 
             // Bước 3: Tấn công boss Bí Cảnh
@@ -1415,7 +1456,7 @@
 
             if (!nonce) {
                 showNotification('Lỗi: Không thể lấy nonce cho Hoang Vực.', 'error');
-                return;
+                throw new Error("Không lấy được nonce");
             }
 
             const payloadBossInfo = new URLSearchParams();
@@ -1436,11 +1477,11 @@
 
                     if (boss.has_pending_rewards) {
                         await this.claimHoangVucRewards(nonce);
-                        return;
+                        throw new Error("Lấy phần thưởng hoang vực thất bại");
                     } else if (boss.created_date === new Date().toISOString().slice(0, 10) && boss.health === boss.max_health) {
                         showNotification('Boss Hoang vực đã bị phong ấn', 'info');
                         taskTracker.markTaskDone(accountId, 'hoangvuc');
-                        return;
+                        throw new Error("Boss đã bị phong ấn");
                     }
 
                     let myElement = await this.getMyElement();
@@ -1497,6 +1538,7 @@
             } catch (e) {
                 console.error(`${this.logPrefix} ❌ Lỗi mạng:`, e);
                 showNotification('Lỗi mạng khi thực hiện Hoang Vực.', 'error');
+                throw e;
             }
         }
     }
@@ -2165,8 +2207,83 @@
         }
     }
 
+    //===================================
+    // TIÊN DUYÊN
+    //===================================
+    class TienDuyen {
+        nonce;
+        constructor() {
+            this.apiUrl = weburl + "wp-json/hh3d/v1/action";
+        }
+        async init() {
+                this.nonce = await getNonce();  // Await và gán ở đây
+            }
+        async #post(action, body = {}) {
+            const res = await fetch(this.apiUrl, {
+                credentials: "include",
+                method: "POST",
+                headers: {
+                    "Accept": "*/*",
+                    "Content-Type": "application/json",
+                    "X-WP-Nonce": this.nonce
+                },
+                body: JSON.stringify({ action, ...body })
+            });
+            return res.json();
+        }
 
+        // Lấy danh sách phòng cưới
+        async getWeddingRooms() {
+            return await this.#post("show_all_wedding", {});
+        }
 
+        // Chúc phúc
+        async addBlessing(weddingRoomId, message = "Chúc phúc trăm năm hạnh phúc 🎉") {
+            return await this.#post("hh3d_add_blessing", {
+                wedding_room_id: weddingRoomId,
+                message
+            });
+        }
+
+        // Nhận lì xì
+        async receiveLiXi(weddingRoomId) {
+            return await this.#post("hh3d_receive_li_xi", {
+                wedding_room_id: weddingRoomId
+            });
+        }
+
+        // Duyên: chúc phúc + nhận lì xì
+        async doTienDuyen() {
+            const lastCheck = taskTracker.getLastCheckTienDuyen(accountId);
+            const now = new Date();
+            if (now - lastCheck < 1800000) return;
+
+            const list = await this.getWeddingRooms();
+            if (!list?.data) {
+                console.warn("Không có danh sách phòng cưới");
+                return;
+            }
+
+            for (const room of list.data) {
+                taskTracker.setLastCheckTienDuyen(accountId, now)
+                console.log(`👉 Kiểm tra phòng ${room.wedding_room_id}`);
+
+                if (room.has_blessed === false) {
+                    const bless = await this.addBlessing(room.wedding_room_id);
+                    if (bless && bless.success === true) {
+                        showNotification(`Bạn đã gửi lời chúc phúc thành công cho cặp đôi <br><b>${bless.data.user1_name} - ${bless.data.user1_name}</b>`, '')
+                    }
+                }
+
+                if (room.has_li_xi === true) {
+                    const liXi = await this.receiveLiXi(room.wedding_room_id);
+                    if (liXi && liXi.success === true) {
+                        showNotification(`Nhận lì xì phòng cưới ${room.wedding_room_id} được <b>${liXi.data.amount} ${liXi.data.name}</b>!`)
+                    }
+                }
+            }
+        }
+    }
 
     // ===============================================
     // HÀM HIỂN THỊ THÔNG BÁO
@@ -2925,7 +3042,34 @@
                         dropdownMenu.appendChild(groupDiv);
 
                         group.links.forEach(link => {
-                            if (link.isDiemDanh) {
+                            if (link.isAutorun) {
+                                const autorunButton = document.createElement('button');
+                                autorunButton.textContent = link.text;
+                                autorunButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
+
+                                // Lưu trạng thái chạy
+                                let isRunning = false;
+                                const originalColor = autorunButton.style.backgroundColor || '';
+                                const runningColor = '#ff0000ff'; // màu khi đang chạy, bạn chỉnh tùy ý
+
+                                autorunButton.addEventListener('click', async () => {
+                                    if (!isRunning) {
+                                        console.log('[HH3D Script] 🖱️ Bắt đầu autorun.');
+                                        autorunButton.textContent = 'Đang chạy autorun...';
+                                        autorunButton.style.backgroundColor = runningColor;
+                                        isRunning = true;
+                                        await automatic.start();
+                                    } else {
+                                        console.log('[HH3D Script] 🖱️ Dừng autorun.');
+                                        autorunButton.textContent = link.text;
+                                        autorunButton.style.backgroundColor = originalColor;
+                                        isRunning = false;
+                                        automatic.stop();
+                                    }
+                                });
+
+                                groupDiv.appendChild(autorunButton);
+                            } else if (link.isDiemDanh) {
                                 const autoTaskButton = document.createElement('button');
                                 autoTaskButton.textContent = link.text;
                                 autoTaskButton.id = 'auto-task-btn';
@@ -3071,23 +3215,117 @@
     // ===============================================
     // Automactic
     // ===============================================
-    async function automatic(accountId) {
-        if (!taskTracker.isTaskDone(accountId, 'diemdanh')) {
-            await doDailyCheckin();
-            await doDailyCheckin();
-            await vandap.doVanDap();
+    class AutomationManager {
+        constructor() {
+            this.accountId = accountId;
+            this.delay = 5000;
+            this.CHECK_INTERVAL_TIEN_DUYEN = 30*60*1000;
+            this.INTERVAL_HOANG_VUC = 15*60*1000 + this.delay;
+            this.INTERVAL_PHUC_LOI = 30*60*1000 + this.delay;
+            this.INTERVAL_THI_LUYEN = 30*60*1000 + this.delay;
+            this.INTERVAL_BI_CANH = 8*60*1000 + this.delay;
+            this.INTERVAL_KHOANG_MACH = 30*60*1000 + this.delay;
         }
 
-        do {
-            const nextTime = new Date(taskTracker.getNextTime(accountId))
+        async start() {
+            console.log(`[Auto] Bắt đầu quá trình tự động cho tài khoản: ${this.accountId}`);
+            // Thực hiện các tác vụ ban đầu
+            await this.doInitialTasks();
+            // Bắt đầu chu kỳ hẹn giờ cho Tiên Duyên
+            this.scheduleTienDuyenCheck();
+            this.scheduleTask('hoangvuc', () => hoangvuc.doHoangVuc(), this.INTERVAL_HOANG_VUC, 'hoangvucTimeout');
+            this.scheduleTask('thiluyen', () => doThiLuyenTongMon(), this.INTERVAL_THI_LUYEN, 'thiluyenTimeout');
+            this.scheduleTask('phucloi', () => doPhucLoiDuong(), this.INTERVAL_PHUC_LOI, 'phucloiTimeout');
+            this.scheduleTask('bicanh', () => bicanh.doBiCanh(), this.INTERVAL_BI_CANH, 'bicanhTimeout');
+            this.scheduleTask('khoangmach', () => khoangmach.doKhoangMach(), this.INTERVAL_KHOANG_MACH, 'khoangmachTimeout');
+        }
 
-            setTimeout(await doThiLuyenTongMon(), nextTime - Date())
+        async doInitialTasks() {
+            if (!taskTracker.isTaskDone(this.accountId, 'diemdanh')) {
+                try {
+                    await doDailyCheckin();
+                    await doClanDailyCheckin();
+                    await vandap.doVanDap();
+                } catch (e) {
+                    console.error("[Auto] Lỗi khi thực hiện Điểm danh, tế lễ, vấn đáp:", e);
+                }
+            }
+        }
 
-            //const nextTime = taskTracker.getNextTime(accountId)
+        async scheduleTienDuyenCheck() {
+            const now = Date.now();
+            const lastCheckTienDuyen = taskTracker.getLastCheckTienDuyen(this.accountId);
+            let timeToNextCheck;
+
+            if (lastCheckTienDuyen === null || now - lastCheckTienDuyen >= this.CHECK_INTERVAL_TIEN_DUYEN) {
+                console.log("[Auto] Đã đến giờ làm Tiên Duyên. Đang thực hiện...");
+                try {
+                    await tienduyen.doTienDuyen();
+                } catch (error) {
+                    console.error("[Auto] Lỗi khi thực hiện Tiên Duyên:", error);
+                }
+                timeToNextCheck = this.CHECK_INTERVAL_TIEN_DUYEN;
+            } else {
+                timeToNextCheck = this.CHECK_INTERVAL_TIEN_DUYEN - (now - lastCheckTienDuyen);
+                console.log(`[Auto] Chưa đến giờ tiên duyên. Sẽ chờ ${timeToNextCheck}ms.`);
+            }
+
+            // Hẹn giờ gọi lại chính nó sau khoảng thời gian đã tính
+            if (this.tienduyenTimeout) clearTimeout(this.tienduyenTimeout);
+            this.tienduyenTimeout = setTimeout(() => this.scheduleTienDuyenCheck(), timeToNextCheck);
+        }
+        
+        
+        /**
+         * Tạo lịch trình cho một nhiệm vụ cụ thể.
+         - Ví dụ: scheduleTask('thiluyen', () => thiluyen.doThiLuyen(), this.INTERVAL_THI_LUYEN, 'thiluyenTimeout')
+         * @param {string} taskName Tên của nhiệm vụ, dùng để truy vấn trạng thái (ví dụ: 'thiluyen').
+         * @param {Function} taskAction Hàm bất đồng bộ thực thi nhiệm vụ (ví dụ: `hoangvuc.doHoangVuc`).
+         * @param {number} interval Chu kỳ lặp lại của nhiệm vụ tính bằng mili giây.
+         * @param {string} timeoutIdKey Tên thuộc tính trong class để lưu ID của setTimeout (ví dụ: 'thiluyenTimeout').
+         */
+        async scheduleTask(taskName, taskAction, interval, timeoutIdKey) {
+            const isTaskDone = taskTracker.isTaskDone(this.accountId, taskName);
+            
+            // Kiểm tra và dừng lịch trình nếu nhiệm vụ đã hoàn thành
+            if (isTaskDone) {
+                if (this[timeoutIdKey]) clearTimeout(this[timeoutIdKey]);
+                return;
+            }
+
+            const now = Date.now();
+            const nextTime = taskTracker.getNextTime(this.accountId, taskName);
+            let timeToNextCheck;
+
+            if (nextTime === null || now >= nextTime) {
+                console.log(`[Auto] Đã đến giờ làm nhiệm vụ: ${taskName}. Đang thực hiện...`);
+                try {
+                    await taskAction(); // Thực thi hàm nhiệm vụ
+                    // Cập nhật thời gian cuối cùng của nhiệm vụ
+                    taskTracker.setLastCheckTime(this.accountId, taskName, Date.now()); 
+                    timeToNextCheck = interval;
+                } catch (error) {
+                    console.error(`[Auto] Lỗi khi thực hiện nhiệm vụ ${taskName}:`, error);
+                    // Có thể đặt thời gian chờ ngắn hơn khi có lỗi để thử lại
+                    timeToNextCheck = 60 * 1000; // Thử lại sau 1 phút
+                }
+            } else {
+                timeToNextCheck = Math.max(nextTime - now, 0);
+                console.log(`[Auto] Nhiệm vụ ${taskName} chưa đến giờ, sẽ chờ ${timeToNextCheck}ms.`);
+            }
+
+            // Hẹn giờ cho lần chạy tiếp theo
+            if (this[timeoutIdKey]) clearTimeout(this[timeoutIdKey]);
+            this[timeoutIdKey] = setTimeout(() => this.scheduleTask(taskName, taskAction, interval, timeoutIdKey), timeToNextCheck);
+        }
 
 
-        } while (!taskTracker.isTaskDone(accountId, 'thiluyen'))
-
+        stop() {
+            if (this.tienduyenTimeout) {
+            clearTimeout(this.tienduyenTimeout);
+            console.log(`Đã dừng quá trình tự động cho tài khoản: ${this.accountId}`);
+            }
+        }
     }
 
     // ===============================================
@@ -3109,4 +3347,8 @@
     const bicanh = new BiCanh();
     const khoangmach = new KhoangMach();
     createCustomMenuButton();
+    const tienduyen = new TienDuyen();
+    await tienduyen.init();
+    const automatic = new AutomationManager();
+    
 })();

@@ -207,7 +207,9 @@
             }
 
             const accountData = this.data[accountId];
-           const today = new Date(Date.now() + 7 * 60 * 60 * 1000).toDateString(); //Giờ VN
+           const options = { timeZone: 'Asia/Ho_Chi_Minh' };
+           const today = new Date().toLocaleDateString('vi-VN', options);
+
 
             // Danh sách tất cả nhiệm vụ mặc định
             const defaultTasks = {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.7.2
+// @version       2.7.3
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -1149,6 +1149,7 @@
                 if (response && response.success) {
                     const message = response.message || `Gây ${response.damage} sát thương.`;
                     this.showNotification(message, 'success');
+                    taskTracker.adjustTaskTime(accountId, 'bicanh', timePlus('08:00'));
                 } else {
                     const errorMessage = response?.message || 'Lỗi không xác định khi tấn công.';
                     this.showNotification(errorMessage, 'error');
@@ -2084,6 +2085,7 @@
                 const d = await r.json();
                 if (d.success) {
                     showNotification(d.data.message, 'success');
+                    taskTracker.adjustTaskTime(accountId, 'khoangmach', timePlus('30:00'));
                     return true;
                 } else {
                     showNotification(d.message || 'Lỗi nhận thưởng.', 'error');

@@ -2284,7 +2284,7 @@
 
             const list = await this.getWeddingRooms();
             if (!list?.data) {
-                console.warn("Không có danh sách phòng cưới");
+                showNotification("Không có danh sách phòng cưới", 'warn');
                 return;
             }
 

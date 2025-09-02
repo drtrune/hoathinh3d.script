@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.8
+// @version       2.8.1
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -3333,15 +3333,15 @@
             const taskFullName = {
                 hoangvuc: "Hoang Vực",
                 phucloi: "Phúc Lợi",
-                thiluyen: "Thi Luyện",
+                thiluyen: "Thí Luyện",
                 bicanh: "Bí Cảnh",
                 khoangmach: "Khoáng Mạch"
             }[taskName];
             if (this[timeoutIdKey]) clearTimeout(this[timeoutIdKey]);
             showNotification(
-                "[Auto] Hẹn giờ cho " + taskFullName + ": " +
-                `${String(Math.floor(timeToNextCheck/60000)).padStart(2,'0')}:${String(Math.floor((timeToNextCheck%60000)/1000)).padStart(2,'0')}`,
-                'info', 10000
+                `[Auto] Hẹn giờ cho ${taskFullName}: ${new Date(Date.now() + timeToNextCheck).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
+                'info',
+                timeToNextCheck
             );
             this[timeoutIdKey] = setTimeout(() => this.scheduleTask(taskName, taskAction, interval, timeoutIdKey), timeToNextCheck);
         }

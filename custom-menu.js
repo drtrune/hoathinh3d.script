@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.8.4
+// @version       2.8.5
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -3309,7 +3309,7 @@
          */
         async scheduleTask(taskName, taskAction, interval, timeoutIdKey) {
             let isTaskDone;
-            if (taskName === 'bicanh' && bicanh.isDailyLimit()) {
+            if (taskName === 'bicanh' && await bicanh.isDailyLimit()) {
                 isTaskDone = true;
             } else {
                 isTaskDone = taskTracker.isTaskDone(this.accountId, taskName);

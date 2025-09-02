@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.7.3
+// @version       2.8
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -207,8 +207,7 @@
             }
 
             const accountData = this.data[accountId];
-           const options = { timeZone: 'Asia/Ho_Chi_Minh' };
-           const today = new Date().toLocaleDateString('vi-VN', options);
+            const today = new Date().toLocaleDateString('vi-VN', {timeZone: 'Asia/Ho_Chi_Minh'});
 
 
             // Danh sách tất cả nhiệm vụ mặc định
@@ -1128,6 +1127,9 @@
                     return false;
                 }
                 else {
+                    if (response && response.success && response.cooldown_remaining) {
+                        taskTracker.adjustTaskTime(accountId, 'bicanh', Date.now()+ response.cooldown_remaining*1000)
+                    }
                     const message = response?.message || 'Không thể tấn công vào lúc này.';
                     this.showNotification(`⏳ ${message}`, 'info');
                     return false;
@@ -1151,7 +1153,7 @@
                 if (response && response.success) {
                     const message = response.message || `Gây ${response.damage} sát thương.`;
                     this.showNotification(message, 'success');
-                    taskTracker.adjustTaskTime(accountId, 'bicanh', timePlus('08:00'));
+                    taskTracker.adjustTaskTime(accountId, 'bicanh', timePlus('07:00'));
                 } else {
                     const errorMessage = response?.message || 'Lỗi không xác định khi tấn công.';
                     this.showNotification(errorMessage, 'error');
@@ -2100,35 +2102,36 @@
             const selectedMineSetting = localStorage.getItem('khoangmach_selected_mine');
             if (!selectedMineSetting) {
                 showNotification('Vui lòng chọn một mỏ trong cài đặt.', 'error');
-                return;
+                throw new Error ('Bạn chưa chọn mỏ');
             }
 
             const selectedMineInfo = JSON.parse(selectedMineSetting);
             if (!selectedMineInfo || !selectedMineInfo.id || !selectedMineInfo.type) {
                 showNotification('Cài đặt mỏ không hợp lệ.', 'error');
-                return;
+                throw new Error ('Cài đặt mỏ không hợp lệ.');
             }
 
             const useBuff = localStorage.getItem('khoangmach_use_buff') === 'true';
             const autoTakeover = localStorage.getItem('khoangmach_auto_takeover') === 'true';
+            const autoTakeoverRotation = localStorage.getItem('khoangmach_auto_takeover_rotation') === 'true';
             const rewardMode = localStorage.getItem('khoangmach_reward_mode');
 
             console.log(`${this.logPrefix} Bắt đầu quy trình cho mỏ ID: ${selectedMineInfo.id}.`);
             const mines = await this.loadMines(selectedMineInfo.type);
-            if (!mines) return;
+            if (!mines) throw new Error ('Không tải danh sách khoáng mạch được');
 
             const targetMine = mines.find(m => m.id === selectedMineInfo.id);
             if (!targetMine) {
                 showNotification('Không tìm thấy mỏ đã chọn trong danh sách tải về.', 'error');
-                return;
+                throw new Error ('Không tìm thấy mỏ đã chọn trong danh sách.');
             }
             if (!targetMine.is_current) {
                 if (parseInt(targetMine.user_count) >= parseInt(targetMine.max_users)) {
                     showNotification('Mỏ đã đầy. Không vào được.', 'warn');
-                    return;
+                    return true;
                 } else {
                     await this.enterMine(targetMine.id);
-                    return;
+                    return true;
                 }
             }
 
@@ -2136,11 +2139,11 @@
             while (true) {
                 // Kiểm tra thông tin trong mỏ
                 let usersInfo = await this.getUsersInMine(targetMine.id);
-                if (!usersInfo) return;
+                if (!usersInfo) throw new Error('Lỗi lấy thông tin chi tiết trong mỏ');
                 const users = usersInfo.users || [];
                 if (users.length === 0) {
                     console.log(`[Khoáng mạch] Mỏ ${targetMine.id} trống.`);
-                    return;
+                    throw new Error('Mỏ trống trơn???');
                 }
 
                 // Kiểm tra ngoại tông
@@ -2179,6 +2182,8 @@
                     canClaim = true;
                 } else if (rewardMode === ">50" && bonus > 50) {
                     canClaim = true;
+                } else if (rewardMode === "110" && bonus === 110) {
+                    canClaim = true;
                 }
 
                 if (canClaim) {
@@ -2188,8 +2193,14 @@
                 } else {
                     console.log(`[Khoáng mạch] Bonus tu vi ${bonus}% chưa đạt ngưỡng ${rewardMode}`);
                     
-                    // Nếu có thể, thử takeover trước
+                    // Nếu có thể, thử takeover trước (option đoạt mỏ khi chưa buff)
                     if (autoTakeover && usersInfo.can_takeover) {
+                        console.log(`[Khoáng mạch] Thử đoạt mỏ ${targetMine.id}...`);
+                        await this.takeOverMine(targetMine.id);
+                    }
+
+                    // Nếu có thể, thử takeover trước (option đoạt mỏ bất kể buff)
+                    if (autoTakeoverRotation && usersInfo.can_takeover) {
                         console.log(`[Khoáng mạch] Thử đoạt mỏ ${targetMine.id}...`);
                         await this.takeOverMine(targetMine.id);
                     }
@@ -2654,6 +2665,7 @@
             <div class="custom-script-khoang-mach-config-group">
                 <label for="rewardModeSelect">Chế độ Nhận Thưởng:</label>
                 <select id="rewardModeSelect">
+                    <option value="110">> 110%</option>
                     <option value=">50">> 50%</option>
                     <option value=">0">> 0%</option>
                     <option value="any">Bất kỳ</option>
@@ -2661,7 +2673,11 @@
             </div>
             <div class="custom-script-khoang-mach-config-group checkbox-group">
                 <input type="checkbox" id="autoTakeOver">
-                <label for="autoTakeOver">Tự động đoạt mỏ</label>
+                <label for="autoTakeOver">Tự động đoạt mỏ khi chưa buff</label>
+            </div>
+            <div class="custom-script-khoang-mach-config-group checkbox-group">
+                <input type="checkbox" id="autoTakeOverRotation">
+                <label for="autoTakeOverRotation">Tự động đoạt mỏ khi có thể (đảo key)</label>
             </div>
             <div class="custom-script-khoang-mach-config-group checkbox-group">
                 <input type="checkbox" id="autoBuff">
@@ -2678,6 +2694,7 @@
         const specificMineSelect = configDiv.querySelector('#specificMineSelect');
         const rewardModeSelect = configDiv.querySelector('#rewardModeSelect');
         const autoTakeOverCheckbox = configDiv.querySelector('#autoTakeOver');
+        const autoTakeOverRotationCheckbox = configDiv.querySelector('#autoTakeOverRotation');
         const autoBuffCheckbox = configDiv.querySelector('#autoBuff');
 
         const savedMineSetting = localStorage.getItem('khoangmach_selected_mine');
@@ -2689,6 +2706,7 @@
         }
         rewardModeSelect.value = localStorage.getItem('khoangmach_reward_mode') || 'any';
         autoTakeOverCheckbox.checked = localStorage.getItem('khoangmach_auto_takeover') === 'true';
+        autoTakeOverRotationCheckbox.checked = localStorage.getItem('khoangmach_auto_takeover_rotation') === 'true';
         autoBuffCheckbox.checked = localStorage.getItem('khoangmach_use_buff') === 'true';
 
         // --- Event mở/đóng config ---
@@ -2717,7 +2735,13 @@
         autoTakeOverCheckbox.addEventListener('change', (e) => {
             localStorage.setItem('khoangmach_auto_takeover', e.target.checked);
             const status = e.target.checked ? 'Bật' : 'Tắt';
-            showNotification(`[Khoáng Mạch] Tự động đoạt mỏ: ${status}`, 'info');
+            showNotification(`[Khoáng Mạch] Tự động đoạt mỏ khi chưa buff: ${status}`, 'info');
+        });
+
+        autoTakeOverRotationCheckbox.addEventListener('change', (e) => {
+            localStorage.setItem('khoangmach_auto_takeover_rotation', e.target.checked);
+            const status = e.target.checked ? 'Bật' : 'Tắt';
+            showNotification(`[Khoáng Mạch] Tự động đoạt mỏ khi có thể: ${status}`, 'info');
         });
 
         autoBuffCheckbox.addEventListener('change', (e) => {
@@ -2732,24 +2756,7 @@
             khoangMachButton.textContent = 'Đang xử lý...';
 
             try {
-                const selectedMineSetting = localStorage.getItem('khoangmach_selected_mine');
-                const selectedMineInfo = JSON.parse(selectedMineSetting);
-                if (!selectedMineInfo || !selectedMineInfo.id || !selectedMineInfo.type) {
-                    showNotification('Cài đặt mỏ không hợp lệ. Vui lòng chọn lại mỏ.', 'error');
-                    return;
-                }
-
-                const selectedRewardMode = localStorage.getItem('khoangmach_reward_mode');
-                const autoTakeOver = localStorage.getItem('khoangmach_auto_takeover') === 'true';
-                const autoBuff = localStorage.getItem('khoangmach_use_buff') === 'true';
-
-                await khoangmach.doKhoangMach({
-                    mineId: selectedMineInfo.id,
-                    mineType: selectedMineInfo.type,
-                    rewardMode: selectedRewardMode,
-                    autoTakeOver,
-                    autoBuff
-                });
+                await khoangmach.doKhoangMach();
             } catch (error) {
                 console.error('[HH3D Khoáng Mạch] ❌', error);
                 showNotification('❌ Lỗi trong quá trình Khoáng Mạch.', 'error');
@@ -3237,6 +3244,7 @@
             await this.doInitialTasks();
             // Bắt đầu chu kỳ hẹn giờ cho Tiên Duyên
             this.scheduleTienDuyenCheck();
+            // Các tác vụ khác
             this.scheduleTask('hoangvuc', () => hoangvuc.doHoangVuc(), this.INTERVAL_HOANG_VUC, 'hoangvucTimeout');
             this.scheduleTask('thiluyen', () => doThiLuyenTongMon(), this.INTERVAL_THI_LUYEN, 'thiluyenTimeout');
             this.scheduleTask('phucloi', () => doPhucLoiDuong(), this.INTERVAL_PHUC_LOI, 'phucloiTimeout');
@@ -3247,9 +3255,11 @@
         async doInitialTasks() {
             if (!taskTracker.isTaskDone(this.accountId, 'diemdanh')) {
                 try {
-                    await doDailyCheckin();
-                    await doClanDailyCheckin();
-                    await vandap.doVanDap();
+                    const nonce = await getNonce()
+                    if (!nonce) return
+                    await doDailyCheckin(nonce);
+                    await doClanDailyCheckin(nonce);
+                    await vandap.doVanDap(nonce);
                 } catch (e) {
                     console.error("[Auto] Lỗi khi thực hiện Điểm danh, tế lễ, vấn đáp:", e);
                 }

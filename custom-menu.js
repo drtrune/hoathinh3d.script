@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.8.2
+// @version       2.8.3
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -2169,13 +2169,13 @@
 
                 // Kiểm tra thời gian
                 if (myInfo.time_spent !== "Đạt tối đa") {
-                    const nextTime = new Date(Date.now() + Math.max(
+                    const nextTime = Date.now() + Math.max(
                         30*60*1000 - (
                             (/phút/.test(myInfo.time_spent) ? parseInt(myInfo.time_spent)*60 : 0) +
                             (/giây/.test(myInfo.time_spent) ? parseInt(myInfo.time_spent) : 0)
                         ) * 1000,
                         0
-                    ));
+                    );
                     taskTracker.adjustTaskTime(accountId, 'khoangmach', nextTime);
                     showNotification(`Khoáng mạch chưa đủ thời gian.<br>Hiện đạt: <b>${myInfo.time_spent}</b>`, 'warn');
                     // Có thể thêm delay để tránh spam server
@@ -2295,14 +2295,14 @@
                 if (room.has_blessed === false) {
                     const bless = await this.addBlessing(room.wedding_room_id);
                     if (bless && bless.success === true) {
-                        showNotification(`Bạn đã gửi lời chúc phúc thành công cho cặp đôi <br><b>${bless.data.user1_name} - ${bless.data.user1_name}</b>`, '')
+                        showNotification(`Bạn đã gửi lời chúc phúc cho cặp đôi <br><b>${room.user1_name} 💞 ${room.user2_name}</b>`, 'success')
                     }
                 }
 
                 if (room.has_li_xi === true) {
                     const liXi = await this.receiveLiXi(room.wedding_room_id);
                     if (liXi && liXi.success === true) {
-                        showNotification(`Nhận lì xì phòng cưới ${room.wedding_room_id} được <b>${liXi.data.amount} ${liXi.data.name}</b>!`)
+                        showNotification(`Nhận lì xì phòng cưới ${room.wedding_room_id} được <b>${liXi.data.amount} ${liXi.data.name}</b>!`, 'succsess')
                     }
                 }
             }
@@ -3340,20 +3340,22 @@
             }
 
             // Hẹn giờ cho lần chạy tiếp theo
-            const taskFullName = {
-                hoangvuc: "Hoang Vực",
-                phucloi: "Phúc Lợi",
-                thiluyen: "Thí Luyện",
-                bicanh: "Bí Cảnh",
-                khoangmach: "Khoáng Mạch"
-            }[taskName];
             if (this[timeoutIdKey]) clearTimeout(this[timeoutIdKey]);
-            showNotification(
-                `[Auto] Hẹn giờ cho ${taskFullName}: ${new Date(Date.now() + timeToNextCheck).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
-                'info',
-                timeToNextCheck
-            );
-            this[timeoutIdKey] = setTimeout(() => this.scheduleTask(taskName, taskAction, interval, timeoutIdKey), timeToNextCheck);
+            if (!taskTracker.isTaskDone(accountId,taskName)) {
+                const taskFullName = {
+                    hoangvuc: "Hoang Vực",
+                    phucloi: "Phúc Lợi",
+                    thiluyen: "Thí Luyện",
+                    bicanh: "Bí Cảnh",
+                    khoangmach: "Khoáng Mạch"
+                }[taskName];
+                showNotification(
+                    `[Auto] Hẹn giờ cho ${taskFullName}: ${new Date(Date.now() + timeToNextCheck).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
+                    'info',
+                    timeToNextCheck
+                );
+                this[timeoutIdKey] = setTimeout(() => this.scheduleTask(taskName, taskAction, interval, timeoutIdKey), timeToNextCheck);
+            }
         }
 
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.8.1
+// @version       2.8.2
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -2169,8 +2169,14 @@
 
                 // Kiểm tra thời gian
                 if (myInfo.time_spent !== "Đạt tối đa") {
-                    const time = `${String(/phút/.test(myInfo.time_spent) ? parseInt(myInfo.time_spent) : 0).padStart(2,'0')}:${String(/giây/.test(myInfo.time_spent) ? parseInt(myInfo.time_spent) : 0).padStart(2,'0')}`;
-                    taskTracker.adjustTaskTime(accountId, 'khoangmach', timePlus(time));
+                    const nextTime = new Date(Date.now() + Math.max(
+                        30*60*1000 - (
+                            (/phút/.test(myInfo.time_spent) ? parseInt(myInfo.time_spent)*60 : 0) +
+                            (/giây/.test(myInfo.time_spent) ? parseInt(myInfo.time_spent) : 0)
+                        ) * 1000,
+                        0
+                    ));
+                    taskTracker.adjustTaskTime(accountId, 'khoangmach', nextTime);
                     showNotification(`Khoáng mạch chưa đủ thời gian.<br>Hiện đạt: <b>${myInfo.time_spent}</b>`, 'warn');
                     // Có thể thêm delay để tránh spam server
                     break;
@@ -3251,8 +3257,8 @@
             this.scheduleTask('hoangvuc', () => hoangvuc.doHoangVuc(), this.INTERVAL_HOANG_VUC, 'hoangvucTimeout');
             this.scheduleTask('thiluyen', () => doThiLuyenTongMon(), this.INTERVAL_THI_LUYEN, 'thiluyenTimeout');
             this.scheduleTask('phucloi', () => doPhucLoiDuong(), this.INTERVAL_PHUC_LOI, 'phucloiTimeout');
-            this.scheduleTask('bicanh', () => bicanh.doBiCanh(), this.INTERVAL_BI_CANH, 'bicanhTimeout');
             this.scheduleTask('khoangmach', () => khoangmach.doKhoangMach(), this.INTERVAL_KHOANG_MACH, 'khoangmachTimeout');
+            this.scheduleTask('bicanh', () => bicanh.doBiCanh(), this.INTERVAL_BI_CANH, 'bicanhTimeout');
         }
 
         async doInitialTasks() {
@@ -3302,8 +3308,12 @@
          * @param {string} timeoutIdKey Tên thuộc tính trong class để lưu ID của setTimeout (ví dụ: 'thiluyenTimeout').
          */
         async scheduleTask(taskName, taskAction, interval, timeoutIdKey) {
-            const isTaskDone = taskTracker.isTaskDone(this.accountId, taskName);
-            
+            let isTaskDone;
+            if (taskName === 'bicanh' && bicanh.isDailyLimit()) {
+                isTaskDone = true;
+            } else {
+                isTaskDone = taskTracker.isTaskDone(this.accountId, taskName);
+            }
             // Kiểm tra và dừng lịch trình nếu nhiệm vụ đã hoàn thành
             if (isTaskDone) {
                 if (this[timeoutIdKey]) clearTimeout(this[timeoutIdKey]);

@@ -326,7 +326,7 @@
 
         getNextTime(accountId, taskName) {
             const accountData = this.getAccountData(accountId);
-            const ts = accountData[taskName]?.nexTime;
+            const ts = accountData[taskName]?.nextTime;
             if (!ts || ts === "null") {
                 return null; // chưa có thời gian
             }
@@ -907,7 +907,7 @@
         const securityNonce = await getSecurityNonce(weburl + 'thi-luyen-tong-mon-hh3d?t', /action: 'open_chest_tltm',\s*security: '([a-f0-9]+)'/);
         if (!securityNonce) {
             showNotification('Lỗi khi lấy security nonce cho Thí Luyện Tông Môn.', 'error');
-            return;
+            throw new Error('Lỗi khi lấy security nonce cho Thí Luyện Tông Môn.');
         }
 
         const url = ajaxUrl;
@@ -943,7 +943,7 @@
                 } else {
                     showNotification(data.data.message, 'error');
                 }
-            }
+            };
 
             const timeResponse = await fetch(url, {
                 method: 'POST',
@@ -951,12 +951,14 @@
                 body: `action=get_remaining_time_tltm&security=${securityNonce}`,
                 credentials: 'include'
             });
-            if (timeResponse.success) {
-                taskTracker.adjustTaskTime(accountId, 'thiluyen', timePlus(timeResponse.data.remaining_time));
+
+            const timeResponseData = await timeResponse.json();
+            if (timeResponseData.success) {
+                taskTracker.adjustTaskTime(accountId, 'thiluyen', timePlus(timeResponseData.data.time_remaining));
             }
 
         } catch (e) {
-            showNotification('Lỗi mạng khi thực hiện Thí Luyện Tông Môn.', 'error');
+            showNotification(`Lỗi mạng khi thực hiện Thí Luyện: ${e.message}`, 'error');
         }
     }
 
@@ -1072,7 +1074,7 @@
             // Bước 2: Kiểm tra thời gian hồi
             const canAttack = await this.checkAttackCooldown(nonce);
             if (!canAttack) {
-                throw new Error ('Không thể tấn công bí cảnh');
+                return true;
             }
 
             // Bước 3: Tấn công boss Bí Cảnh
@@ -2167,7 +2169,8 @@
 
                 // Kiểm tra thời gian
                 if (myInfo.time_spent !== "Đạt tối đa") {
-                    
+                    const time = `${String(/phút/.test(myInfo.time_spent) ? parseInt(myInfo.time_spent) : 0).padStart(2,'0')}:${String(/giây/.test(myInfo.time_spent) ? parseInt(myInfo.time_spent) : 0).padStart(2,'0')}`;
+                    taskTracker.adjustTaskTime(accountId, 'khoangmach', timePlus(time));
                     showNotification(`Khoáng mạch chưa đủ thời gian.<br>Hiện đạt: <b>${myInfo.time_spent}</b>`, 'warn');
                     // Có thể thêm delay để tránh spam server
                     break;
@@ -3234,7 +3237,7 @@
             this.INTERVAL_HOANG_VUC = 15*60*1000 + this.delay;
             this.INTERVAL_PHUC_LOI = 30*60*1000 + this.delay;
             this.INTERVAL_THI_LUYEN = 30*60*1000 + this.delay;
-            this.INTERVAL_BI_CANH = 8*60*1000 + this.delay;
+            this.INTERVAL_BI_CANH = 7*60*1000 + this.delay;
             this.INTERVAL_KHOANG_MACH = 30*60*1000 + this.delay;
         }
 
@@ -3315,13 +3318,11 @@
                 console.log(`[Auto] Đã đến giờ làm nhiệm vụ: ${taskName}. Đang thực hiện...`);
                 try {
                     await taskAction(); // Thực thi hàm nhiệm vụ
-                    // Cập nhật thời gian cuối cùng của nhiệm vụ
-                    taskTracker.setLastCheckTime(this.accountId, taskName, Date.now()); 
                     timeToNextCheck = interval;
                 } catch (error) {
                     console.error(`[Auto] Lỗi khi thực hiện nhiệm vụ ${taskName}:`, error);
                     // Có thể đặt thời gian chờ ngắn hơn khi có lỗi để thử lại
-                    timeToNextCheck = 60 * 1000; // Thử lại sau 1 phút
+                    timeToNextCheck = 3*60 * 1000; // Thử lại sau 3 phút
                 }
             } else {
                 timeToNextCheck = Math.max(nextTime - now, 0);
@@ -3329,7 +3330,19 @@
             }
 
             // Hẹn giờ cho lần chạy tiếp theo
+            const taskFullName = {
+                hoangvuc: "Hoang Vực",
+                phucloi: "Phúc Lợi",
+                thiluyen: "Thi Luyện",
+                bicanh: "Bí Cảnh",
+                khoangmach: "Khoáng Mạch"
+            }[taskName];
             if (this[timeoutIdKey]) clearTimeout(this[timeoutIdKey]);
+            showNotification(
+                "[Auto] Hẹn giờ cho " + taskFullName + ": " +
+                `${String(Math.floor(timeToNextCheck/60000)).padStart(2,'0')}:${String(Math.floor((timeToNextCheck%60000)/1000)).padStart(2,'0')}`,
+                'info', 10000
+            );
             this[timeoutIdKey] = setTimeout(() => this.scheduleTask(taskName, taskAction, interval, timeoutIdKey), timeToNextCheck);
         }
 

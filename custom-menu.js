@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.8.5
+// @version       2.8.6
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -2302,7 +2302,7 @@
                 if (room.has_li_xi === true) {
                     const liXi = await this.receiveLiXi(room.wedding_room_id);
                     if (liXi && liXi.success === true) {
-                        showNotification(`Nhận lì xì phòng cưới ${room.wedding_room_id} được <b>${liXi.data.amount} ${liXi.data.name}</b>!`, 'succsess')
+                        showNotification(`Nhận lì xì phòng cưới ${room.wedding_room_id} được <b>${liXi.data.amount} ${liXi.data.name}</b>!`, 'success')
                     }
                 }
             }

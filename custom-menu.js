@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.8.6
+// @version       2.8.7
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -2094,7 +2094,7 @@
                     taskTracker.adjustTaskTime(accountId, 'khoangmach', timePlus('30:00'));
                     return true;
                 } else {
-                    showNotification(d.message || 'Lỗi nhận thưởng.', 'error');
+                    showNotification(d.data.message || 'Lỗi nhận thưởng.', 'error');
                     return false;
                 }
             } catch (e) { console.error(`${this.logPrefix} ❌ Lỗi mạng (nhận thưởng):`, e); return false; }
@@ -2140,9 +2140,9 @@
             // Bắt đầu vòng lặp để kiểm tra và thực hiện tác vụ liên tục
             while (true) {
                 // Kiểm tra thông tin trong mỏ
-                let usersInfo = await this.getUsersInMine(targetMine.id);
-                if (!usersInfo) throw new Error('Lỗi lấy thông tin chi tiết trong mỏ');
-                const users = usersInfo.users || [];
+                let mineInfo = await this.getUsersInMine(targetMine.id);
+                if (!mineInfo) throw new Error('Lỗi lấy thông tin chi tiết trong mỏ');
+                const users = mineInfo.users || [];
                 if (users.length === 0) {
                     console.log(`[Khoáng mạch] Mỏ ${targetMine.id} trống.`);
                     throw new Error('Mỏ trống trơn???');
@@ -2183,7 +2183,7 @@
                 }
 
                 // Kiểm tra trạng thái bonus
-                let bonus = usersInfo.bonus_percentage || 0;
+                let bonus = mineInfo.bonus_percentage || 0;
                 let canClaim = false;
                 if (rewardMode === "any") {
                     canClaim = true;
@@ -2203,19 +2203,21 @@
                     console.log(`[Khoáng mạch] Bonus tu vi ${bonus}% chưa đạt ngưỡng ${rewardMode}`);
                     
                     // Nếu có thể, thử takeover trước (option đoạt mỏ khi chưa buff)
-                    if (autoTakeover && usersInfo.can_takeover) {
+                    if (autoTakeover && mineInfo.can_takeover) {
                         console.log(`[Khoáng mạch] Thử đoạt mỏ ${targetMine.id}...`);
                         await this.takeOverMine(targetMine.id);
+                        continue;
                     }
 
                     // Nếu có thể, thử takeover trước (option đoạt mỏ bất kể buff)
-                    if (autoTakeoverRotation && usersInfo.can_takeover) {
+                    if (autoTakeoverRotation && mineInfo.can_takeover) {
                         console.log(`[Khoáng mạch] Thử đoạt mỏ ${targetMine.id}...`);
                         await this.takeOverMine(targetMine.id);
+                        continue;
                     }
 
                     // Nếu không thể takeover và có bật buff
-                    if (useBuff && bonus > 0) {
+                    if (useBuff && bonus > 0 && mineInfo.is_mine_owner) {
                         console.log(`[Khoáng mạch] Mua linh quang phù...`);
                         await this.buyBuffItem(targetMine.id);
                         // Đợi một chút để server xử lý
@@ -2674,7 +2676,7 @@
             <div class="custom-script-khoang-mach-config-group">
                 <label for="rewardModeSelect">Chế độ Nhận Thưởng:</label>
                 <select id="rewardModeSelect">
-                    <option value="110">> 110%</option>
+                    <option value="110">110%</option>
                     <option value=">50">> 50%</option>
                     <option value=">0">> 0%</option>
                     <option value="any">Bất kỳ</option>
@@ -3231,6 +3233,9 @@
             }
         }, retryInterval);
     }
+    
+
+
 
     // ===============================================
     // Automactic

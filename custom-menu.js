@@ -2126,7 +2126,7 @@
         }
 
         async doKhoangMach() {
-            const selectedMineSetting = localStorage.getItem('khoangmach_selected_mine');
+            const selectedMineSetting = localStorage.getItem(`khoangmach_selected_mine_${this.accountId}`);
             if (!selectedMineSetting) {
                 showNotification('Vui lòng chọn một mỏ trong cài đặt.', 'error');
                 throw new Error ('Bạn chưa chọn mỏ');
@@ -3141,14 +3141,15 @@
             const autoTakeOverRotationCheckbox = configDiv.querySelector('#autoTakeOverRotation');
             const autoBuffCheckbox = configDiv.querySelector('#autoBuff');
 
-            const savedMineSetting = localStorage.getItem('khoangmach_selected_mine');
+            const keyMine = `khoangmach_selected_mine_${this.accountId}`;
+            const savedMineSetting = localStorage.getItem(keyMine);
             if (savedMineSetting) {
-            try {
-                const mineInfo = JSON.parse(savedMineSetting);
-                if (mineInfo && mineInfo.id) specificMineSelect.value = mineInfo.id;
-            } catch (e) {
-                localStorage.removeItem('khoangmach_selected_mine');
-            }
+                try {
+                    const mineInfo = JSON.parse(savedMineSetting);
+                    if (mineInfo && mineInfo.id) specificMineSelect.value = mineInfo.id;
+                } catch (e) {
+                    localStorage.removeItem(keyMine);
+                }
             }
             rewardModeSelect.value = localStorage.getItem('khoangmach_reward_mode') || 'any';
             autoTakeOverCheckbox.checked = localStorage.getItem('khoangmach_auto_takeover') === 'true';
@@ -3166,7 +3167,7 @@
                 const selectedId = e.target.value;
                 const selectedMine = minesData.find(mine => mine.id === selectedId);
                 if (selectedMine && selectedMine.type) {
-                    localStorage.setItem('khoangmach_selected_mine', JSON.stringify({ id: selectedId, type: selectedMine.type }));
+                    localStorage.setItem(keyMine, JSON.stringify({ id: selectedId, type: selectedMine.type}));
                     showNotification(`[Khoáng Mạch] Đã chọn mỏ: ${e.target.options[e.target.selectedIndex].text}`, 'info');
                 }
             });

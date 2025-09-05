@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       3.1
+// @version       3.1.1
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -2126,7 +2126,7 @@
         }
 
         async doKhoangMach() {
-            const selectedMineSetting = localStorage.getItem(`khoangmach_selected_mine_${this.accountId}`);
+            const selectedMineSetting = localStorage.getItem(`khoangmach_selected_mine_${accountId}`);
             if (!selectedMineSetting) {
                 showNotification('Vui lòng chọn một mỏ trong cài đặt.', 'error');
                 throw new Error ('Bạn chưa chọn mỏ');
@@ -3141,7 +3141,7 @@
             const autoTakeOverRotationCheckbox = configDiv.querySelector('#autoTakeOverRotation');
             const autoBuffCheckbox = configDiv.querySelector('#autoBuff');
 
-            const keyMine = `khoangmach_selected_mine_${this.accountId}`;
+            const keyMine = `khoangmach_selected_mine_${accountId}`;
             const savedMineSetting = localStorage.getItem(keyMine);
             if (savedMineSetting) {
                 try {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       3.1.1
+// @version       3.2
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -2251,7 +2251,7 @@
                     }
 
                     // Nếu không thể làm gì, thoát khỏi vòng lặp
-                    console.log(`[Khoáng mạch] Không thể thực hiện thêm hành động nào. Thoát vòng lặp.`);
+                    showNotification(`[Khoáng mạch] Bonus ${bonus}% chưa đạt ${rewardMode}%<br>Hiện không thể đoạt mỏ.<br>Không thực hiện được hành động nào.`, 'info', 6000)
                     break;
                 }
             }

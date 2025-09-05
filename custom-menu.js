@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       2.9
+// @version       3.0
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -180,6 +180,7 @@
         constructor(storageKey = 'dailyTasks') {
             this.storageKey = storageKey;
             this.data = this.loadData();
+            this.dothachTimeoutId = null;
         }
 
         // Tải dữ liệu từ localStorage
@@ -243,8 +244,14 @@
 
             // Xử lý Đổ Thạch lượt 2
             const now = new Date();
-            const hourInVN = (now.getUTCHours() + 7) % 24; // Giờ Việt Nam (GMT+7)
-
+                const hourInVN = parseInt(
+                    new Date().toLocaleString('en-US', {
+                        timeZone: 'Asia/Ho_Chi_Minh',
+                        hour: 'numeric',
+                        hour12: false
+                    }),
+                    10
+                );
             if (accountData.dothach.turn === 1 && hourInVN >= 16) {
                 accountData.dothach = {
                     betplaced: false,
@@ -254,6 +261,27 @@
                 this.saveData();
             }
 
+            // Lên lịch tự động reset vào 16h hàng ngày nếu chưa có timer
+                if (!this.dothachTimeoutId) {
+                    const now = new Date();
+                    const nextResetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 16, 0, 0, 0);
+
+                    // Nếu giờ hiện tại đã qua 16h, lên lịch cho ngày hôm sau
+                    if (now.getTime() >= nextResetTime.getTime()) {
+                        nextResetTime.setDate(now.getDate() + 1);
+                    }
+
+                    const timeToWait = nextResetTime.getTime() - now.getTime();
+                    
+                    console.log(`[TaskTracker] Đổ Thạch reset sẽ chạy sau ${Math.floor(timeToWait / 1000 / 60)} phút.`);
+
+                    // Đặt timeout và lưu ID
+                    this.dothachTimeoutId = setTimeout(() => {
+                        // Tự động gọi lại hàm này để cập nhật dữ liệu và lên lịch lại
+                        this.getAccountData(accountId);
+                    }, timeToWait);
+                }
+
             return accountData;
         }
 
@@ -261,7 +289,7 @@
          * Cập nhật một thuộc tính cụ thể của một nhiệm vụ.
          * @param {string} accountId - ID của tài khoản.
          * @param {string} taskName - Tên nhiệm vụ (ví dụ: 'dothach').
-         * @param {string} key - Tên thuộc tính cần cập nhật (ví dụ: 'bet_placed').
+         * @param {string} key - Tên thuộc tính cần cập nhật (ví dụ: 'betplaced').
          * @param {*} value - Giá trị mới cho thuộc tính.
          */
         updateTask(accountId, taskName, key, value) {
@@ -351,6 +379,8 @@
             }
             this.updateTask(accountId, 'tienduyen', 'last_check', finalTimestamp);
         }
+
+
     }
 
 
@@ -780,7 +810,6 @@
                 if (data.success) {
                     const rewardMessage = data.data?.message || `Nhận thưởng thành công!`;
                     showNotification(rewardMessage, 'success');
-                    taskTracker.updateTask(accountId, 'dothach', 'reward_claimed', 'true')
                     return true;
                 }
                 const errorMessage = data.data?.message || 'Lỗi không xác định khi nhận thưởng.';
@@ -833,6 +862,7 @@
                 } else {
                     showNotification('[Đổ Thạch] 😶 Bạn không tham gia phiên này.', 'info');
                 }
+                taskTracker.updateTask(accountId, 'dothach', 'reward_claimed', 'true')
                 return;
             }
 
@@ -1480,7 +1510,7 @@
 
                     if (boss.has_pending_rewards) {
                         await this.claimHoangVucRewards(nonce);
-                        throw new Error("Lấy phần thưởng hoang vực thất bại");
+                        return this.doHoangVuc(maximizeDamage);
                     } else if (boss.created_date === new Date().toISOString().slice(0, 10) && boss.health === boss.max_health) {
                         taskTracker.markTaskDone(accountId, 'hoangvuc');
                         return true;
@@ -2339,6 +2369,7 @@
                   transition: all 0.5s ease-in-out;
                   opacity: 0;
                   transform: translateX(100%);
+                  background-color: white;
                 }
 
                 .hh3d-notification-item.success {
@@ -2424,811 +2455,6 @@
         });
     };
 
-
-    // ===============================================
-    // HÀM TẠO UI NÚT MENU TÙY CHỈNH
-    // ===============================================
-
-    // Hàm tạo menu đổ thạch
-    async function createDiceRollMenu(parentGroup) {
-        // Thêm lớp dice-roll-group cho phần tử cha
-        parentGroup.classList.add('custom-script-dice-roll-group');
-
-        const select = document.createElement('select');
-        select.id = 'dice-roll-select';
-        select.classList.add('custom-script-dice-roll-select'); // Thêm lớp CSS cho dropdown
-
-        const optionTai = document.createElement('option');
-        optionTai.value = 'tai';
-        optionTai.textContent = 'Tài';
-        select.appendChild(optionTai);
-
-        const optionXiu = document.createElement('option');
-        optionXiu.value = 'xiu';
-        optionXiu.textContent = 'Xỉu';
-        select.appendChild(optionXiu);
-
-        const rollButton = document.createElement('button');
-        rollButton.textContent = 'Đổ Thạch';
-        rollButton.classList.add('custom-script-menu-button', 'custom-script-dice-roll-btn'); // Thêm lớp CSS cho nút
-
-        rollButton.addEventListener('click', async () => {
-            const selectedChoice = select.value;
-            await dothach.run(selectedChoice);
-            const currentTime = new Date();
-            const currentHour = currentTime.getHours();
-            const isBetTime = (currentHour >= 6 && currentHour < 13) || (currentHour >= 16 && currentHour < 21);
-            if (taskTracker.getTaskStatus(accountId, 'dothach').betplaced && isBetTime) {
-                rollButton.disabled = true
-            }
-        });
-        const currentTime = new Date();
-        const currentHour = currentTime.getHours();
-        const isBetTime = (currentHour >= 6 && currentHour < 13) || (currentHour >= 16 && currentHour < 21);
-        if (taskTracker.getTaskStatus(accountId, 'dothach').betplaced && isBetTime) {
-            rollButton.disabled = true
-        }
-        parentGroup.appendChild(select);
-        parentGroup.appendChild(rollButton);
-    }
-
-    //Hàm tạo menu hoang vực
-
-    function createHoangVucMenu(parentGroup) {
-            // --- Nút chính "Hoang Vực" ---
-            const hoangVucButton = document.createElement('button');
-            hoangVucButton.textContent = 'Hoang Vực';
-            hoangVucButton.classList.add('custom-script-hoang-vuc-btn');
-            hoangVucButton.addEventListener('click', async () => {
-                console.log('[HH3D Hoang Vực] 🖱️ Nút Hoang vực vừa được nhấn');
-                const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
-                console.log(`[HH3D Hoang Vực] Chế độ Tối đa hoá sát thương: ${maximizeDamage ? 'Bật' : 'Tắt'}`);
-
-                hoangVucButton.disabled = true;
-                hoangVucButton.textContent = 'Đang xử lý...';
-
-                // Gọi phương thức qua instance của class
-                await hoangvuc.doHoangVuc(maximizeDamage);
-
-                if (taskTracker.isTaskDone(accountId, 'hoangvuc')) {
-                    hoangVucButton.disabled = true;
-                    hoangVucButton.textContent = 'Hoang Vực ✅';
-                } else {
-                    hoangVucButton.disabled = false;
-                    hoangVucButton.textContent = 'Hoang Vực';
-                }
-            });
-
-            // --- Nút cài đặt nhỏ ---
-            const settingsButton = document.createElement('button');
-            settingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
-
-            const updateSettingsIcon = () => {
-                const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
-                if (maximizeDamage) {
-                    settingsButton.textContent = '🔼';
-                    settingsButton.title = 'Tối đa hoá sát thương: Bật';
-                } else {
-                    settingsButton.textContent = '🔷';
-                    settingsButton.title = 'Tối đa hoá sát thương: Tắt';
-                }
-            };
-
-            settingsButton.addEventListener('click', () => {
-                let maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
-                const newSetting = !maximizeDamage;
-                localStorage.setItem('hoangvucMaximizeDamage', newSetting);
-                if (newSetting) {
-                    showNotification('[Hoang vực] Đổi ngũ hành để tối đa hoá sát thương', 'info');
-                } else {
-                    showNotification('[Hoang vực] Đổi ngũ hành để không bị giảm sát thương', 'info');
-                }
-                updateSettingsIcon();
-            });
-
-            parentGroup.appendChild(settingsButton);
-            parentGroup.appendChild(hoangVucButton);
-            if (taskTracker.isTaskDone(accountId, 'hoangvuc')) {
-                    hoangVucButton.disabled = true;
-                    hoangVucButton.textContent = 'Hoang Vực ✅';
-                }
-            updateSettingsIcon();
-        }
-
-    //Hàm tạo menu Luận Võ
-
-    async function createLuanVoMenu(parentGroup) {
-        const luanVoButton = document.createElement('button');
-        const luanVoSettingsButton = document.createElement('button');
-        luanVoSettingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
-
-        // Khởi tạo giá trị mặc định nếu chưa có
-        // Sử dụng '1' và '0' để biểu thị trạng thái BẬT/TẮT.
-        if (localStorage.getItem('luanVoAutoChallenge') === null) {
-            localStorage.setItem('luanVoAutoChallenge', '1');
-        }
-
-        // Lấy giá trị ban đầu và chuyển thành boolean
-        let autoChallengeEnabled = localStorage.getItem('luanVoAutoChallenge') === '1';
-
-        // Cập nhật trạng thái hiển thị của nút
-        const updateButtonState = (isEnabled) => {
-            luanVoSettingsButton.textContent = isEnabled ? '✅' : '❌';
-            luanVoSettingsButton.title = isEnabled ? 'Tự động thực hiện Luận Võ: Bật' : 'Tự động thực hiện Luận Võ: Tắt';
-        };
-
-        updateButtonState(autoChallengeEnabled); // Cập nhật trạng thái ban đầu
-
-        parentGroup.appendChild(luanVoSettingsButton);
-
-        // Thêm sự kiện click cho nút cài đặt Luận Võ
-        luanVoSettingsButton.addEventListener('click', () => {
-            autoChallengeEnabled = !autoChallengeEnabled; // Đảo ngược trạng thái
-            localStorage.setItem('luanVoAutoChallenge', autoChallengeEnabled ? '1' : '0'); // Lưu lại vào localStorage
-            updateButtonState(autoChallengeEnabled); // Cập nhật giao diện
-
-            const message = autoChallengeEnabled ? 'Tự động thực hiện Luận Võ đã được bật' : 'Tự động thực hiện Luận Võ đã được tắt';
-            showNotification(`[Luận Võ] ${message}`, 'info');
-            console.log(`[HH3D Luận Võ] Trạng thái tự động thực hiện Luận Võ: ${autoChallengeEnabled}`);
-        });
-
-        luanVoButton.textContent = 'Luận Võ';
-        luanVoButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-        luanVoButton.addEventListener('click', async () => {
-            console.log('[HH3D Luận Võ] Nút Luận võ đã được nhấn');
-            luanVoButton.disabled = true;
-            luanVoButton.textContent = 'Đang xử lý...';
-
-            try {
-                // Lấy lại giá trị từ localStorage ngay trước khi gọi hàm, để đảm bảo chính xác
-                const currentAutoChallenge = localStorage.getItem('luanVoAutoChallenge') === '1';
-                await luanvo.startLuanVo(currentAutoChallenge);
-            } catch (error) {
-                console.error('[HH3D Luận Võ] ❌ Lỗi trong quá trình Luận Võ:', error);
-                showNotification('❌ Lỗi trong quá trình Luận Võ.', 'error');
-            } finally {
-                if (taskTracker.isTaskDone(accountId, 'luanvo')) {
-                    luanVoButton.disabled = true;
-                    luanVoButton.textContent = 'Luận Võ ✅';
-                } else {
-                luanVoButton.disabled = false;
-                luanVoButton.textContent = 'Luận Võ';
-                }
-            }
-        });
-
-        parentGroup.appendChild(luanVoButton);
-        if (taskTracker.isTaskDone(accountId, 'luanvo')) {
-            luanVoButton.disabled = true;
-            luanVoButton.textContent = 'Luận Võ ✅';
-        }
-    }
-
-    // Hàm tạo nút bí cảnh
-    async function createBiCanhMenu(parentGroup) {
-        const biCanhButton = document.createElement('button');
-        biCanhButton.textContent = 'Bí Cảnh';
-        biCanhButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-        biCanhButton.addEventListener('click', async () => {
-            console.log('[HH3D Bí Cảnh] Nút Bí Cảnh đã được nhấn');
-            biCanhButton.disabled = true;
-            biCanhButton.textContent = 'Đang xử lý...';
-            try {
-                await bicanh.doBiCanh();
-            } catch (error) {
-                console.error('[HH3D Bí Cảnh] ❌ Lỗi trong quá trình Bí Cảnh:', error);
-                showNotification('❌ Lỗi trong quá trình Bí Cảnh.', 'error');
-            } finally {
-                if (await bicanh.isDailyLimit()) {
-                                    biCanhButton.disabled = true;
-                                    biCanhButton.textContent = 'Bí Cảnh ✅';
-                } else {
-                // Nếu không đạt giới hạn, cho phép nhấn lại
-                biCanhButton.disabled = false;
-                biCanhButton.textContent = 'Bí Cảnh';
-                }
-            }
-        });
-        parentGroup.appendChild(biCanhButton);
-        if (await bicanh.isDailyLimit()) {
-            biCanhButton.disabled = true;
-            biCanhButton.textContent = 'Bí Cảnh ✅';
-        }
-    }
-
-    // Hàm tạo menu khoáng mạch
-    async function createKhoangMachMenu(parentGroup) {
-        const { optionsHtml, minesData } = await khoangmach.getAllMines();
-
-        // --- Container chung (dọc) ---
-        const container = document.createElement('div');
-        container.classList.add('custom-script-khoang-mach-container');
-
-        // --- Hàng nút (Settings + Khoáng Mạch) ---
-        const buttonRow = document.createElement('div');
-        buttonRow.classList.add('custom-script-khoang-mach-button-row');
-
-        const khoangMachButton = document.createElement('button');
-        khoangMachButton.classList.add('custom-script-khoang-mach-button');
-        khoangMachButton.textContent = 'Khoáng Mạch';
-
-        const khoangMachSettingsButton = document.createElement('button');
-        khoangMachSettingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
-        khoangMachSettingsButton.textContent = '⚙️';
-
-        buttonRow.appendChild(khoangMachSettingsButton);
-        buttonRow.appendChild(khoangMachButton);
-
-        // --- Panel config ---
-        const configDiv = document.createElement('div');
-        configDiv.style.display = 'none';
-        configDiv.classList.add('custom-script-settings-panel');
-        configDiv.innerHTML = `
-            <div class="custom-script-khoang-mach-config-group">
-                <label for="specificMineSelect">Chọn Khoáng Mạch:</label>
-                <select id="specificMineSelect">${optionsHtml}</select>
-            </div>
-            <div class="custom-script-khoang-mach-config-group">
-                <label for="rewardModeSelect">Chế độ Nhận Thưởng:</label>
-                <select id="rewardModeSelect">
-                    <option value="110">110%</option>
-                    <option value=">50">> 50%</option>
-                    <option value=">0">> 0%</option>
-                    <option value="any">Bất kỳ</option>
-                </select>
-            </div>
-            <div class="custom-script-khoang-mach-config-group checkbox-group">
-                <input type="checkbox" id="autoTakeOver">
-                <label for="autoTakeOver">Tự động đoạt mỏ khi chưa buff</label>
-            </div>
-            <div class="custom-script-khoang-mach-config-group checkbox-group">
-                <input type="checkbox" id="autoTakeOverRotation">
-                <label for="autoTakeOverRotation">Tự động đoạt mỏ khi có thể (đảo key)</label>
-            </div>
-            <div class="custom-script-khoang-mach-config-group checkbox-group">
-                <input type="checkbox" id="autoBuff">
-                <label for="autoBuff">Tự động mua Linh Quang Phù</label>
-            </div>
-        `;
-
-        // --- Thêm vào container và parent ---
-        container.appendChild(buttonRow);
-        container.appendChild(configDiv);
-        parentGroup.appendChild(container);
-
-        // --- Khôi phục cài đặt từ localStorage ---
-        const specificMineSelect = configDiv.querySelector('#specificMineSelect');
-        const rewardModeSelect = configDiv.querySelector('#rewardModeSelect');
-        const autoTakeOverCheckbox = configDiv.querySelector('#autoTakeOver');
-        const autoTakeOverRotationCheckbox = configDiv.querySelector('#autoTakeOverRotation');
-        const autoBuffCheckbox = configDiv.querySelector('#autoBuff');
-
-        const savedMineSetting = localStorage.getItem('khoangmach_selected_mine');
-        if (savedMineSetting) {
-            try {
-                const mineInfo = JSON.parse(savedMineSetting);
-                if (mineInfo && mineInfo.id) specificMineSelect.value = mineInfo.id;
-            } catch (e) { localStorage.removeItem('khoangmach_selected_mine'); }
-        }
-        rewardModeSelect.value = localStorage.getItem('khoangmach_reward_mode') || 'any';
-        autoTakeOverCheckbox.checked = localStorage.getItem('khoangmach_auto_takeover') === 'true';
-        autoTakeOverRotationCheckbox.checked = localStorage.getItem('khoangmach_auto_takeover_rotation') === 'true';
-        autoBuffCheckbox.checked = localStorage.getItem('khoangmach_use_buff') === 'true';
-
-        // --- Event mở/đóng config ---
-        let settingsOpen = false;
-        khoangMachSettingsButton.addEventListener('click', () => {
-            settingsOpen = !settingsOpen;
-            configDiv.style.display = settingsOpen ? 'block' : 'none';
-            khoangMachSettingsButton.title = settingsOpen ? 'Đóng cài đặt Khoáng Mạch' : 'Mở cài đặt Khoáng Mạch';
-        });
-
-        // --- Event lưu localStorage ---
-        specificMineSelect.addEventListener('change', (e) => {
-            const selectedId = e.target.value;
-            const selectedMine = minesData.find(mine => mine.id === selectedId);
-            if (selectedMine && selectedMine.type) {
-                localStorage.setItem('khoangmach_selected_mine', JSON.stringify({ id: selectedId, type: selectedMine.type }));
-                showNotification(`[Khoáng Mạch] Đã chọn mỏ: ${e.target.options[e.target.selectedIndex].text}`, 'info');
-            }
-        });
-
-        rewardModeSelect.addEventListener('change', (e) => {
-            localStorage.setItem('khoangmach_reward_mode', e.target.value);
-            showNotification(`[Khoáng Mạch] Chế độ nhận thưởng: ${e.target.options[e.target.selectedIndex].text}`, 'info');
-        });
-
-        autoTakeOverCheckbox.addEventListener('change', (e) => {
-            localStorage.setItem('khoangmach_auto_takeover', e.target.checked);
-            const status = e.target.checked ? 'Bật' : 'Tắt';
-            showNotification(`[Khoáng Mạch] Tự động đoạt mỏ khi chưa buff: ${status}`, 'info');
-        });
-
-        autoTakeOverRotationCheckbox.addEventListener('change', (e) => {
-            localStorage.setItem('khoangmach_auto_takeover_rotation', e.target.checked);
-            const status = e.target.checked ? 'Bật' : 'Tắt';
-            showNotification(`[Khoáng Mạch] Tự động đoạt mỏ khi có thể: ${status}`, 'info');
-        });
-
-        autoBuffCheckbox.addEventListener('change', (e) => {
-            localStorage.setItem('khoangmach_use_buff', e.target.checked);
-            const status = e.target.checked ? 'Bật' : 'Tắt';
-            showNotification(`[Khoáng Mạch] Tự động mua Linh Quang Phù: ${status}`, 'info');
-        });
-
-        // --- Event nút Khoáng Mạch ---
-        khoangMachButton.addEventListener('click', async () => {
-            khoangMachButton.disabled = true;
-            khoangMachButton.textContent = 'Đang xử lý...';
-
-            try {
-                await khoangmach.doKhoangMach();
-            } catch (error) {
-                console.error('[HH3D Khoáng Mạch] ❌', error);
-                showNotification('❌ Lỗi trong quá trình Khoáng Mạch.', 'error');
-            } finally {
-                if (taskTracker.isTaskDone(accountId, 'khoangmach')) {
-                    khoangMachButton.disabled = true;
-                    khoangMachButton.textContent = 'Khoáng Mạch ✅';
-                } else {
-                khoangMachButton.disabled = false;
-                khoangMachButton.textContent = 'Khoáng Mạch';
-                }
-            }
-        });
-        if (taskTracker.isTaskDone(accountId, 'khoangmach')) {
-                    khoangMachButton.disabled = true;
-                    khoangMachButton.textContent = 'Khoáng Mạch ✅';
-        }
-    }
-
-
-
-    // Hàm tạo nút menu tùy chỉnh
-    async function createCustomMenuButton() {
-        addStyle(`
-/* Kiểu chung cho toàn bộ menu */
-.custom-script-menu {
-    display: flex !important;
-    flex-direction: column !important;
-    position: absolute;
-    background-color: #242323ff;
-    min-width: 300px !important;
-    z-index: 1001;
-    border-radius: 5px;
-    top: calc(100% + 6px);
-    right: 0;
-    padding: 8px;
-    gap: 6px;
-}
-
-/* Kiểu chung cho các nhóm nút */
-.custom-script-menu-group {
-    display: flex;
-    flex-direction: row;
-    gap: 6px;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-}
-
-/* Kiểu chung cho tất cả các nút (a, button) */
-.custom-script-menu-button,
-.custom-script-menu-link {
-    color: black;
-    padding: 8px 10px !important;
-    font-size: 13px !important;
-    text-decoration: none;
-    border-radius: 5px;
-    background-color: #f1f1f1;
-    flex-grow: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s ease-in-out;
-}
-.custom-script-menu.hidden {
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-}
-
-.custom-script-menu-button:hover,
-.custom-script-menu-link:hover {
-    box-shadow: 0 0 15px rgba(52, 152, 219, 0.7);
-    transform: scale(1.03);
-}
-
-/* Nút auto-btn */
-.custom-script-auto-btn {
-    background-color: #3498db;
-    color: white;
-    font-weight: bold;
-}
-.custom-script-auto-btn:hover {
-    background-color: #2980b9;
-}
-.custom-script-auto-btn:disabled {
-    background-color: #7f8c8d;
-    cursor: not-allowed;
-    box-shadow: none;
-}
-
-/* Nhóm Dice Roll */
-.custom-script-dice-roll-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-grow: 1;
-}
-.custom-script-dice-roll-select {
-    padding: 8px 10px;
-    font-size: 13px;
-    border-radius: 5px;
-    border: 1px solid #ccc;
-    background-color: #fff;
-    color: black;
-    cursor: pointer;
-    flex-grow: 1;
-}
-.custom-script-dice-roll-btn {
-    background-color: #e74c3c;
-    color: white;
-    font-weight: bold;
-    padding: 8px 10px;
-}
-.custom-script-dice-roll-btn:hover {
-    background-color: #c0392b;
-}
-.custom-script-dice-roll-btn:disabled {
-    background-color: #7f8c8d;
-    cursor: not-allowed;
-    box-shadow: none;
-}
-.custom-script-menu-group-dice-roll {
-    display: flex;
-    flex-direction: row;
-    gap: 6px;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    align-items: center;
-}
-
-/* Nhóm Hoang Vực */
-.custom-script-hoang-vuc-group {
-    display: flex;
-    flex-direction: row;
-    gap: 6px;
-}
-.custom-script-hoang-vuc-btn,
-.custom-script-hoang-vuc-settings-btn {
-    border-radius: 5px;
-    border: none;
-    font-weight: bold;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-.custom-script-hoang-vuc-btn {
-    background-color: #3498db;
-    color: white;
-}
-.custom-script-hoang-vuc-btn:hover {
-    background-color: #3498db;
-}
-.custom-script-hoang-vuc-btn:disabled {
-    background-color: #7f8c8d;
-    cursor: not-allowed;
-    box-shadow: none;
-}
-.custom-script-hoang-vuc-settings-btn {
-    width: 30px;
-    height: 30px;
-    background-color: #555;
-    color: white;
-    border-radius: 15px;
-    margin-top: 5px;
-
-}
-.custom-script-hoang-vuc-settings-btn:hover {
-    background-color: #1f6da1ff;
-}
-
-/* Khoáng Mạch */
-.custom-script-khoang-mach-container {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
-}
-
-.custom-script-khoang-mach-button-row {
-    display: flex;
-    flex-direction: row;
-    gap: 6px;
-    width: 100%;
-}
-
-.custom-script-khoang-mach-button {
-    padding: 8px 10px !important;
-    font-size: 13px !important;
-    text-decoration: none;
-    border-radius: 5px;
-    background-color: #3498db;
-    color: white;
-    font-weight: bold;
-    flex-grow: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s ease-in-out;
-}
-.custom-script-khoang-mach-button:disabled {
-    background-color: #7f8c8d;
-    cursor: not-allowed;
-    box-shadow: none;
-}
-.custom-script-settings-panel {
-    background-color: #333;
-    border: 1px solid #444;
-    border-radius: 5px;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.custom-script-khoang-mach-config-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.custom-script-khoang-mach-config-group label {
-    font-size: 13px;
-    color: #ccc;
-    font-weight: bold;
-}
-
-.custom-script-khoang-mach-config-group select {
-    padding: 8px;
-}
-
-.custom-script-khoang-mach-config-group.checkbox-group {
-    flex-direction: row;
-    align-items: center;
-    gap: 6px;
-}
-
-.custom-script-khoang-mach-config-group.checkbox-group input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-}
-
-        `);
-
-        const notificationsDivSelector = '.load-notification.relative';
-        const retryInterval = 500; // Thử lại mỗi 500ms
-        const timeout = 15000; // Chờ tối đa 15 giây
-        let elapsedTime = 0;
-
-        console.log('[HH3D Script] ⏳ Đang tìm kiếm vị trí để chèn menu...');
-
-        const intervalId = setInterval(() => {
-            const notificationsDiv = document.querySelector(notificationsDivSelector);
-
-            // 1. Nếu tìm thấy phần tử
-            if (notificationsDiv) {
-                clearInterval(intervalId); // Dừng việc tìm kiếm
-                console.log('[HH3D Script] ✅ Đã tìm thấy vị trí. Bắt đầu chèn menu.');
-
-                // --- Toàn bộ logic tạo menu được di chuyển vào đây ---
-                const parentNavItems = notificationsDiv.parentNode;
-
-                if (parentNavItems && parentNavItems.classList.contains('nav-items')) {
-                    // Tránh chèn menu lặp lại nếu script chạy nhiều lần
-                    if (document.querySelector('.custom-script-item-wrapper')) {
-                        console.log('[HH3D Script] ⚠️ Menu đã tồn tại. Bỏ qua việc chèn lại.');
-                        return;
-                    }
-
-                    const customMenuWrapper = document.createElement('div');
-                    customMenuWrapper.classList.add('load-notification', 'relative', 'custom-script-item-wrapper');
-
-                    const newMenuButton = document.createElement('a');
-                    newMenuButton.href = '#';
-                    newMenuButton.setAttribute('data-view', 'hide');
-
-                    const iconDiv = document.createElement('div');
-                    const iconSpan = document.createElement('span');
-                    iconSpan.classList.add('material-icons-round1', 'material-icons-menu');
-                    iconSpan.textContent = 'task';
-                    iconDiv.appendChild(iconSpan);
-                    newMenuButton.appendChild(iconDiv);
-
-                    const dropdownMenu = document.createElement('div');
-                    dropdownMenu.className = 'custom-script-menu hidden';
-
-                    LINK_GROUPS.forEach(group => {
-                        const groupDiv = document.createElement('div');
-                        groupDiv.className = 'custom-script-menu-group';
-                        dropdownMenu.appendChild(groupDiv);
-
-                        group.links.forEach(link => {
-                            if (link.isAutorun) {
-                                const autorunButton = document.createElement('button');
-                                autorunButton.textContent = link.text;
-                                autorunButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-
-                                // Lưu trạng thái chạy
-                                let isRunning = false;
-                                const originalColor = autorunButton.style.backgroundColor || '';
-                                const runningColor = '#ff0000ff'; // màu khi đang chạy, bạn chỉnh tùy ý
-
-                                autorunButton.addEventListener('click', async () => {
-                                    if (!isRunning) {
-                                        console.log('[HH3D Script] 🖱️ Bắt đầu autorun.');
-                                        autorunButton.textContent = 'Đang chạy autorun...';
-                                        autorunButton.style.backgroundColor = runningColor;
-                                        isRunning = true;
-                                        await automatic.start();
-                                    } else {
-                                        console.log('[HH3D Script] 🖱️ Dừng autorun.');
-                                        autorunButton.textContent = link.text;
-                                        autorunButton.style.backgroundColor = originalColor;
-                                        isRunning = false;
-                                        automatic.stop();
-                                    }
-                                });
-
-                                groupDiv.appendChild(autorunButton);
-                            } else if (link.isDiemDanh) {
-                                const autoTaskButton = document.createElement('button');
-                                autoTaskButton.textContent = link.text;
-                                autoTaskButton.id = 'auto-task-btn';
-                                autoTaskButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-                                autoTaskButton.addEventListener('click', async () => {
-                                    console.log('[HH3D Script] 🖱️ Nút Điểm Danh - Tế lễ - Vấn đáp đã được nhấn.');
-                                    autoTaskButton.disabled = true;
-                                    autoTaskButton.textContent = 'Đang xử lý...';
-                                    const nonce = await getNonce();
-                                    if (!nonce) {
-                                        showNotification('Không tìm thấy nonce! Vui lòng tải lại trang.', 'error');
-                                        autoTaskButton.disabled = false;
-                                        autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
-                                        return;
-                                    }
-                                    await doDailyCheckin(nonce);
-                                    await doClanDailyCheckin(nonce);
-                                    await vandap.doVanDap(nonce)
-                                    console.log('[HH3D Script] ✅ Tất cả nhiệm vụ đã hoàn thành.');
-                                    if (taskTracker.isTaskDone(accountId, 'diemdanh')) {
-                                        autoTaskButton.disabled = true;
-                                        autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp ✅';
-                                    } else {
-                                        autoTaskButton.disabled = false;
-                                        autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp';
-                                    }
-                                });
-                                groupDiv.appendChild(autoTaskButton);
-                                if (taskTracker.isTaskDone(accountId, 'diemdanh')) {
-                                    autoTaskButton.disabled = true;
-                                    autoTaskButton.textContent = 'Điểm danh - Tế lễ - Vấn đáp ✅';
-                                }
-                            } else if (link.isDiceRoll) {
-                                groupDiv.className = 'custom-script-menu-group-dice-roll';
-                                createDiceRollMenu(groupDiv);
-                            } else if (link.isThiLuyen) {
-                                const thiLuyenButton = document.createElement('button');
-                                thiLuyenButton.textContent = link.text;
-                                thiLuyenButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-                                thiLuyenButton.addEventListener('click', async () => {
-                                    console.log('[HH3D Script] 🖱️ Nút Thí Luyện Tông Môn đã được nhấn.');
-                                    thiLuyenButton.disabled = true;
-                                    thiLuyenButton.textContent = 'Đang xử lý...';
-                                    await doThiLuyenTongMon();
-                                    if (taskTracker.isTaskDone(accountId, 'thiluyen')) {
-                                        thiLuyenButton.disabled = true;
-                                        thiLuyenButton.textContent = 'Thí Luyện ✅';
-                                    } else {
-                                        thiLuyenButton.textContent = 'Thí Luyện';
-                                        thiLuyenButton.disabled = false;
-                                    }
-                                    console.log('[HH3D Script] ✅ Thí Luyện Tông Môn đã hoàn thành.');
-                                });
-                                groupDiv.appendChild(thiLuyenButton);
-                                if (taskTracker.isTaskDone(accountId, 'thiluyen')) {
-                                    thiLuyenButton.disabled = true;
-                                    thiLuyenButton.textContent = 'Thí Luyện ✅';
-                                }
-                            } else if (link.isPhucLoi) {
-                                const phucLoiButton = document.createElement('button');
-                                phucLoiButton.textContent = link.text;
-                                phucLoiButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
-                                phucLoiButton.addEventListener('click', async () => {
-                                    console.log('[HH3D Script] 🖱️ Nút Phúc Lợi đã được nhấn');
-                                    phucLoiButton.disabled = true;
-                                    phucLoiButton.textContent = 'Đang xử lý...';
-                                    await doPhucLoiDuong();
-                                    if (taskTracker.isTaskDone(accountId, 'phucloi')) {
-                                        phucLoiButton.disabled = true;
-                                        phucLoiButton.textContent = 'Phúc Lợi ✅';
-                                    } else {
-                                        phucLoiButton.textContent = 'Phúc Lợi';
-                                        phucLoiButton.disabled = false;
-                                    }
-                                    console.log('[HH3D Script] ✅ Phúc Lợi đã hoàn thành.');
-                                });
-                                groupDiv.appendChild(phucLoiButton);
-                                if (taskTracker.isTaskDone(accountId, 'phucloi')) {
-                                    phucLoiButton.disabled = true;
-                                    phucLoiButton.textContent = 'Phúc Lợi ✅';
-                                }
-                            } else if (link.isBiCanh) {
-                                groupDiv.className = 'custom-script-menu-group';
-                                createBiCanhMenu(groupDiv);
-                            } else if (link.isHoangVuc) {
-                                groupDiv.className = 'custom-script-hoang-vuc-group';
-                                createHoangVucMenu(groupDiv);
-                            } else if (link.isLuanVo) {
-                                groupDiv.className = 'custom-script-hoang-vuc-group';
-                                createLuanVoMenu(groupDiv);
-                            } else if (link.isKhoangMach) {
-                                groupDiv.className = 'custom-script-hoang-vuc-group';
-                                createKhoangMachMenu(groupDiv);
-                            } else {
-                                const menuItem = document.createElement('a');
-                                menuItem.classList.add('custom-script-menu-link');
-                                menuItem.href = link.url;
-                                menuItem.textContent = link.text;
-                                menuItem.target = '_blank';
-                                groupDiv.appendChild(menuItem);
-                            }
-                        });
-                    });
-
-                    customMenuWrapper.appendChild(newMenuButton);
-                    customMenuWrapper.appendChild(dropdownMenu);
-                    parentNavItems.insertBefore(customMenuWrapper, notificationsDiv.nextSibling);
-
-                    console.log('[HH3D Script] 🎉 Chèn menu tùy chỉnh thành công!');
-
-                    newMenuButton.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        dropdownMenu.classList.toggle('hidden');
-                        if (dropdownMenu.classList.contains('hidden')) {
-                            iconSpan.textContent = 'task';
-                        } else {
-                            iconSpan.textContent = 'highlight_off';
-                        }
-                    });
-
-                    document.addEventListener('click', function(e) {
-                        if (!customMenuWrapper.contains(e.target)) {
-                            dropdownMenu.classList.add('hidden');
-                            iconSpan.textContent = 'task';
-                        }
-                    });
-
-                } else {
-                    console.warn('[HH3D Script - Cảnh báo] ⚠️ Không tìm thấy phần tử cha ".nav-items". Không thể chèn menu.');
-                }
-                return; // Kết thúc hàm sau khi thành công
-            }
-
-            // 2. Nếu chưa tìm thấy, kiểm tra timeout
-            elapsedTime += retryInterval;
-            if (elapsedTime >= timeout) {
-                clearInterval(intervalId); // Dừng tìm kiếm
-                console.error(`[HH3D Script - Lỗi] ❌ Không tìm thấy phần tử "${notificationsDivSelector}" sau ${timeout / 1000} giây. Script sẽ không chèn menu.`);
-            }
-        }, retryInterval);
-    }
-    
     // ===============================================
     // Class quản lý các quy tắc CSS
     // ===============================================
@@ -3456,7 +2682,116 @@
             .custom-script-khoang-mach-config-group.checkbox-group input[type="checkbox"] {
                 width: 16px;
                 height: 16px;
-            }`;
+            }
+            .custom-script-status-icon {
+                width: 10px;
+                height: 10px;
+                margin-top: 0px;
+                margin-right: 0px;
+            }
+
+            .custom-script-item-wrapper {
+                position: relative; /* Quan trọng: Đặt vị trí tương đối để định vị icon */
+            }
+
+            /* Biểu tượng trạng thái Autorun */
+            .custom-script-status-icon {
+                position: absolute;
+                top: -5px;
+                right: -5px;
+                width: 10px;
+                height: 10px;
+                background-color: transparent;
+                border-radius: 50%;
+                border: none;
+                z-index: 10;
+            }
+
+            /* Khi autorun đang chạy */
+            .custom-script-status-icon.running {
+                background-color: #e74c3c; /* Màu đỏ */
+                animation: pulse 1.5s infinite; /* Hiệu ứng nhấp nháy */
+            }
+
+            /* Hiệu ứng nhấp nháy */
+            @keyframes pulse {
+                0% {
+                    transform: scale(1);
+                    opacity: 1;
+                }
+                50% {
+                    transform: scale(1.5);
+                    opacity: 0.5;
+                }
+                100% {
+                    transform: scale(1);
+                    opacity: 1;
+                }
+            }
+
+            /* CSS cho container chứa nhiều thông báo */
+            .custom-script-status-bar {
+                position: relative;
+                bottom: 0px;           /* ✅ bám đáy parent thay vì top */
+                left: 50%;
+                transform: translateX(-50%);
+                width: 100%;
+                max-width: 250px;
+                padding: 5px;
+                display: flex;
+                flex-direction: column; /* thông báo mới nằm trên */
+                gap: 5px;
+                z-index: 1000;
+            }
+
+            /* CSS cho từng thông báo riêng lẻ */
+            .custom-script-message {
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 500;
+                color: #fff;
+                white-space: nowrap;
+                text-align: center;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                opacity: 0;
+                animation: fadeIn 0.3s forwards;
+                transition: opacity 0.3s ease-in-out;
+            }
+
+            /* Các loại thông báo */
+            .custom-script-message.info {
+                background-color: #3498db;
+            }
+
+            .custom-script-message.success {
+                background-color: #2ecc71;
+            }
+
+            .custom-script-message.error {
+                background-color: #e74c3c;
+            }
+
+            /* Hiệu ứng khi thông báo bị xóa */
+            @keyframes fadeOut {
+                to {
+                    opacity: 0;
+                    transform: scale(0.9);
+                }
+            }
+
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                    transform: scale(0.9);
+                }
+                to {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+}
+            `;
+
         document.head.appendChild(style);
     }
     }
@@ -3479,14 +2814,21 @@
         async updateButtonState(taskName) {
             const button = this.buttonMap.get(taskName);
             if (!button) return;
+            const statusIcon = document.querySelector('.custom-script-status-icon');
 
             // Xử lý logic cập nhật trạng thái dựa trên tên nhiệm vụ (taskName)
             switch (taskName) {
                 case 'autorun':
                     if (this.autorunIsRunning) {
                         button.textContent = 'Đang chạy autorun...';
+                        if (statusIcon) {
+                            statusIcon.classList.add('running');
+                        }
                     } else {
                         button.textContent = 'Autorun';
+                        if (statusIcon) {
+                            statusIcon.classList.remove('running');
+                        }
                     }
                     break;
                 case 'diemdanh':
@@ -3504,8 +2846,12 @@
                     }
                     break;
                 case 'dothach':
-                    const currentTime = new Date();
-                    const currentHour = currentTime.getHours();
+                    const currentHour = parseInt(new Date().toLocaleString('en-US', {
+                        timeZone: 'Asia/Ho_Chi_Minh',
+                        hour: 'numeric',
+                        hour12: false // Định dạng 24 giờ
+                    }), 10);
+
                     const isBetTime = (currentHour >= 6 && currentHour < 13) || (currentHour >= 16 && currentHour < 21);
                     const status = taskTracker.getTaskStatus(this.accountId, 'dothach');
                     if ((status.betplaced && isBetTime) || (status.reward_claimed && !isBetTime)) {
@@ -3545,6 +2891,14 @@
             optionXiu.textContent = 'Xỉu';
             select.appendChild(optionXiu);
 
+            const savedChoice = localStorage.getItem('dice-roll-choice') ?? 'tai';
+            select.value = savedChoice;
+
+            // 🔹 Lưu lại mỗi khi thay đổi
+            select.addEventListener('change', () => {
+                localStorage.setItem('dice-roll-choice', select.value);
+            });
+
             const rollButton = document.createElement('button');
             rollButton.textContent = 'Đổ Thạch';
             rollButton.classList.add('custom-script-menu-button', 'custom-script-dice-roll-btn');
@@ -3552,7 +2906,9 @@
 
             rollButton.addEventListener('click', async () => {
                 const selectedChoice = select.value;
+                rollButton.textContent = 'Đang xử lý...';
                 await dothach.run(selectedChoice);
+                rollButton.textContent = 'Đổ Thạch';
                 this.updateButtonState('dothach');
             });
 
@@ -3587,8 +2943,13 @@
                 hoangVucButton.disabled = true;
                 hoangVucButton.textContent = 'Đang xử lý...';
                 const maximizeDamage = localStorage.getItem('hoangvucMaximizeDamage') === 'true';
-                try {await hoangvuc.doHoangVuc(maximizeDamage);}
-                finally {this.updateButtonState('hoangvuc');}
+                try {
+                    await hoangvuc.doHoangVuc(maximizeDamage);
+                }
+                finally {
+                    hoangVucButton.textContent = 'Hoang Vực';
+                    this.updateButtonState('hoangvuc');
+                }
             });
 
             settingsButton.addEventListener('click', () => {
@@ -3643,6 +3004,7 @@
                     const currentAutoChallenge = localStorage.getItem('luanVoAutoChallenge') === '1';
                     await luanvo.startLuanVo(currentAutoChallenge);
                 } finally {
+                    luanVoButton.textContent = 'Luận Võ';
                     this.updateButtonState('luanvo');
                 }
             });
@@ -3687,6 +3049,7 @@
                     await automatic.start();
                 } else {
                     await automatic.stop();
+                    createUI.clearStatusBar();
                 }
             });
 
@@ -3708,6 +3071,7 @@
                 try {
                     await bicanh.doBiCanh();
                 } finally {
+                    biCanhButton.textContent = 'Bí Cảnh';
                     this.updateButtonState('bicanh');
                 }
             });
@@ -3813,15 +3177,15 @@
             });
 
             autoTakeOverCheckbox.addEventListener('change', (e) => {
-            localStorage.setItem('khoangmach_auto_takeover', e.target.checked);
-            const status = e.target.checked ? 'Bật' : 'Tắt';
-            showNotification(`[Khoáng Mạch] Tự động đoạt mỏ khi chưa buff: ${status}`, 'info');
+                localStorage.setItem('khoangmach_auto_takeover', e.target.checked);
+                const status = e.target.checked ? 'Bật' : 'Tắt';
+                showNotification(`[Khoáng Mạch] Tự động đoạt mỏ khi chưa buff: ${status}`, 'info');
             });
 
             autoTakeOverRotationCheckbox.addEventListener('change', (e) => {
-            localStorage.setItem('khoangmach_auto_takeover_rotation', e.target.checked);
-            const status = e.target.checked ? 'Bật' : 'Tắt';
-            showNotification(`[Khoáng Mạch] Tự động đoạt mỏ khi có thể: ${status}`, 'info');
+                localStorage.setItem('khoangmach_auto_takeover_rotation', e.target.checked);
+                const status = e.target.checked ? 'Bật' : 'Tắt';
+                showNotification(`[Khoáng Mạch] Tự động đoạt mỏ khi có thể: ${status}`, 'info');
             });
 
             autoBuffCheckbox.addEventListener('change', (e) => {
@@ -3833,8 +3197,13 @@
             khoangMachButton.addEventListener('click', async () => {
                 khoangMachButton.disabled = true;
                 khoangMachButton.textContent = 'Đang xử lý...';
-                try {await khoangmach.doKhoangMach();}
-                finally {this.updateButtonState('khoangmach');}
+                try {
+                    await khoangmach.doKhoangMach();
+                }
+                finally {
+                    khoangMachButton.textContent = 'Khoáng Mạch'; 
+                    this.updateButtonState('khoangmach');
+                }
             });
             
             this.updateButtonState('khoangmach');
@@ -3844,10 +3213,9 @@
         createAutoTaskButton(link, parentGroup) {
             const button = document.createElement('button');
             
-            const taskName = link.isAutorun ? 'autorun' : 
-                            link.isDiemDanh ? 'diemdanh' : 
-                            link.isThiLuyen ? 'thiluyen' : 
-                            link.isPhucLoi ? 'phucloi' : null;
+            const taskName = link.isDiemDanh ? 'diemdanh' : 
+                             link.isThiLuyen ? 'thiluyen' : 
+                             link.isPhucLoi ? 'phucloi' : null;
             
             if (!taskName) return;
 
@@ -3892,6 +3260,7 @@
                             await doPhucLoiDuong();
                             console.log('[HH3D Script] ✅ Phúc Lợi đã hoàn thành.');                        }
                     } finally {
+                        button.textContent = link.text;
                         this.updateButtonState(taskName);
                     }
                  }
@@ -3954,6 +3323,14 @@
             newMenuButton.href = '#';
             newMenuButton.setAttribute('data-view', 'hide');
 
+            // Tạo phần tử div cho biểu tượng trạng thái
+            const statusIcon = document.createElement('div');
+            statusIcon.classList.add('custom-script-status-icon');
+            //statusIcon.classList.add('material-icons-round1', 'material-icons-menu');
+            newMenuButton.appendChild(statusIcon);
+
+
+
             const iconDiv = document.createElement('div');
             const iconSpan = document.createElement('span');
             iconSpan.classList.add('material-icons-round1', 'material-icons-menu');
@@ -3963,7 +3340,7 @@
 
             const dropdownMenu = document.createElement('div');
             dropdownMenu.className = 'custom-script-menu hidden';
-            
+
             this.linkGroups.forEach(group => {
                 const groupDiv = document.createElement('div');
                 groupDiv.className = 'custom-script-menu-group';
@@ -4001,9 +3378,20 @@
                 });
             });
 
+            // --- THÊM DÒNG NÀY ĐỂ TẠO THANH TRẠNG THÁI ---
+            const statusBar = document.createElement('div');
+            statusBar.className = 'custom-script-status-bar';
+            dropdownMenu.appendChild(statusBar);
+            // ---------------------------------------------
             customMenuWrapper.appendChild(newMenuButton);
             customMenuWrapper.appendChild(dropdownMenu);
             parentNavItems.insertBefore(customMenuWrapper, notificationsDiv.nextSibling);
+
+
+
+
+
+
 
             console.log('[HH3D Script] 🎉 Chèn menu tùy chỉnh thành công!');
 
@@ -4024,9 +3412,51 @@
             }
         };
 
+
+        // Hàm để cập nhật statusbar
+        updateStatusBar(message, type = 'info', duration = null) {
+            const statusBar = document.querySelector('.custom-script-status-bar');
+            if (!statusBar) return;
+
+            const messageElement = document.createElement('div');
+            messageElement.className = 'custom-script-message';
+            messageElement.classList.add(type);
+            messageElement.textContent = message;
+
+            // Thêm thông báo vào cuối danh sách
+            statusBar.appendChild(messageElement);
+
+            // Xóa thông báo cũ nếu quá nhiều để tránh tràn màn hình
+            while (statusBar.children.length > 5) { // Giới hạn 5 thông báo
+                statusBar.removeChild(statusBar.firstChild);
+            }
+
+            // Tự động xóa thông báo sau một khoảng thời gian
+            if (duration !== null) {
+                setTimeout(() => {
+                    messageElement.style.animation = 'fadeOut 0.3s forwards';
+                    messageElement.addEventListener('animationend', () => {
+                        if (messageElement.parentNode === statusBar) {
+                            statusBar.removeChild(messageElement);
+                        }
+                    });
+                }, duration);
+            }
+        }
+
+        // Hàm mới để xóa tất cả thông báo
+        clearStatusBar() {
+            const statusBar = document.querySelector('.custom-script-status-bar');
+            if (statusBar) {
+                while (statusBar.firstChild) {
+                    statusBar.removeChild(statusBar.firstChild);
+                }
+            }
+        }
+
         // Hàm gọi phương thức updateButtonState của UIMenuCreator
-        updateButtonState(taskName) {
-            this.uiMenuCreator.updateButtonState(taskName);
+        async updateButtonState(taskName) {
+            await this.uiMenuCreator.updateButtonState(taskName);
         }
     }
 
@@ -4044,6 +3474,7 @@
             this.INTERVAL_THI_LUYEN = 30*60*1000 + this.delay;
             this.INTERVAL_BI_CANH = 7*60*1000 + this.delay;
             this.INTERVAL_KHOANG_MACH = 30*60*1000 + this.delay;
+            this.timeoutIds = {};
         }
 
         async start() {
@@ -4052,12 +3483,14 @@
             await this.doInitialTasks();
             // Bắt đầu chu kỳ hẹn giờ cho Tiên Duyên
             this.scheduleTienDuyenCheck();
+            // Đổ thạch
+            this.scheduleDoThach();
             // Các tác vụ khác
-            this.scheduleTask('hoangvuc', () => hoangvuc.doHoangVuc(), this.INTERVAL_HOANG_VUC, 'hoangvucTimeout');
-            this.scheduleTask('thiluyen', () => doThiLuyenTongMon(), this.INTERVAL_THI_LUYEN, 'thiluyenTimeout');
-            this.scheduleTask('phucloi', () => doPhucLoiDuong(), this.INTERVAL_PHUC_LOI, 'phucloiTimeout');
-            this.scheduleTask('khoangmach', () => khoangmach.doKhoangMach(), this.INTERVAL_KHOANG_MACH, 'khoangmachTimeout');
-            this.scheduleTask('bicanh', () => bicanh.doBiCanh(), this.INTERVAL_BI_CANH, 'bicanhTimeout');
+            this.scheduleTask('hoangvuc', () => hoangvuc.doHoangVuc(), this.INTERVAL_HOANG_VUC);
+            this.scheduleTask('thiluyen', () => doThiLuyenTongMon(), this.INTERVAL_THI_LUYEN);
+            this.scheduleTask('phucloi', () => doPhucLoiDuong(), this.INTERVAL_PHUC_LOI);
+            this.scheduleTask('khoangmach', () => khoangmach.doKhoangMach(), this.INTERVAL_KHOANG_MACH);
+            this.scheduleTask('bicanh', () => bicanh.doBiCanh(), this.INTERVAL_BI_CANH);
         }
 
         async doInitialTasks() {
@@ -4107,9 +3540,9 @@
          * @param {string} taskName Tên của nhiệm vụ, dùng để truy vấn trạng thái (ví dụ: 'thiluyen').
          * @param {Function} taskAction Hàm bất đồng bộ thực thi nhiệm vụ (ví dụ: `hoangvuc.doHoangVuc`).
          * @param {number} interval Chu kỳ lặp lại của nhiệm vụ tính bằng mili giây.
-         * @param {string} timeoutIdKey Tên thuộc tính trong class để lưu ID của setTimeout (ví dụ: 'thiluyenTimeout').
          */
-        async scheduleTask(taskName, taskAction, interval, timeoutIdKey) {
+        async scheduleTask(taskName, taskAction, interval) {
+            if (this.timeoutIds[taskName]) clearTimeout(this.timeoutIds[taskName]);
             let isTaskDone;
             if (taskName === 'bicanh' && await bicanh.isDailyLimit()) {
                 isTaskDone = true;
@@ -4118,7 +3551,6 @@
             }
             // Kiểm tra và dừng lịch trình nếu nhiệm vụ đã hoàn thành
             if (isTaskDone) {
-                if (this[timeoutIdKey]) clearTimeout(this[timeoutIdKey]);
                 createUI.updateButtonState(taskName);
                 return;
             }
@@ -4145,7 +3577,7 @@
             }
 
             // Hẹn giờ cho lần chạy tiếp theo
-            if (this[timeoutIdKey]) clearTimeout(this[timeoutIdKey]);
+            if (this.timeoutIds[taskName]) clearTimeout(this.timeoutIds[taskName]);
             if (!taskTracker.isTaskDone(accountId,taskName)) {
                 const taskFullName = {
                     hoangvuc: "Hoang Vực",
@@ -4154,19 +3586,108 @@
                     bicanh: "Bí Cảnh",
                     khoangmach: "Khoáng Mạch"
                 }[taskName];
-                showNotification(
-                    `[Auto] Hẹn giờ cho ${taskFullName}: ${new Date(Date.now() + timeToNextCheck).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
+                //showNotification(
+                createUI.updateStatusBar(
+                    `🕐 ${taskFullName}: ${new Date(Date.now() + timeToNextCheck).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
                     'info',
-                    10000
+                    timeToNextCheck
                 );
-                this[timeoutIdKey] = setTimeout(() => this.scheduleTask(taskName, taskAction, interval, timeoutIdKey), timeToNextCheck);
+                this.timeoutIds[taskName] = setTimeout(() => this.scheduleTask(taskName, taskAction, interval), timeToNextCheck);
             }
         }
 
+        async scheduleDoThach() {
+            const status = taskTracker.getTaskStatus(accountId, 'dothach');
+                const isBetPlaced = status.betplaced;
+                const isRewardClaimed = status.reward_claimed;
+                
+                const currentHour = parseInt(
+                    new Date().toLocaleString('en-US', {
+                        timeZone: 'Asia/Ho_Chi_Minh',
+                        hour: 'numeric',
+                        hour12: false
+                    }),
+                    10
+                );
+
+                let nextActionTime; // Giờ hành động tiếp theo (ví dụ: 13, 16, 21, 6)
+                let timeToNextCheck; // Thời gian chờ (mili giây)
+
+                const calculateTimeToNextHour = (targetHour) => {
+                    const now = new Date();
+                    const nextTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, 0, 0, 0);
+                    if (now.getHours() >= targetHour) {
+                        nextTime.setDate(nextTime.getDate() + 1); // Nếu giờ mục tiêu đã qua, chuyển sang ngày mai
+                    }
+                    return nextTime.getTime() - now.getTime();
+                };
+
+                if (isBetPlaced) {
+                    // Đã đặt cược, chờ đến giờ nhận thưởng
+                    if (currentHour >= 6 && currentHour < 13) {
+                        nextActionTime = 13; // Chờ đến 13h để nhận thưởng lần 1
+                    } else if (currentHour >= 16 && currentHour < 21) {
+                        nextActionTime = 21; // Chờ đến 21h để nhận thưởng lần 2
+                    } else {
+                        console.log('[Đổ Thạch] Đã đặt cược nhưng không trong khung giờ cược, chờ khung giờ nhận thưởng tiếp theo.');
+                        if (currentHour < 13) {
+                            nextActionTime = 13;
+                        } else if (currentHour < 21) {
+                            nextActionTime = 21;
+                        } else {
+                            nextActionTime = 6; // Chờ đến 6h sáng mai
+                        }
+                    }
+                } else if (isRewardClaimed) {
+                    // Đã nhận thưởng, chờ đến giờ đặt cược tiếp theo
+                    if (currentHour >= 13 && currentHour < 16) {
+                        nextActionTime = 16; // Chờ đến 16h để đặt cược lần 2
+                    } else {
+                        nextActionTime = 6; // Chờ đến 6h sáng hôm sau
+                    }
+                } else {
+                    const stoneType = localStorage.getItem('dice-roll-choice') ?? 'tai';
+                    // Chưa đặt cược hoặc chưa nhận thưởng. Cần kiểm tra khung giờ hiện tại
+                    if (currentHour >= 6 && currentHour < 13) {
+                        console.log('[Đổ Thạch] Đang trong khung giờ 6h-13h. Đang đặt cược...');
+                        await dothach.run(stoneType); // Thực hiện đặt cược
+                        nextActionTime = 13; // Sau khi cược, chờ đến 13h để kiểm tra thưởng
+                    } else if (currentHour >= 16 && currentHour < 21) {
+                        console.log('[Đổ Thạch] Đang trong khung giờ 16h-21h. Đang đặt cược...');
+                        await dothach.run(stoneType); // Thực hiện đặt cược
+                        nextActionTime = 21; // Sau khi cược, chờ đến 21h để kiểm tra thưởng
+                    } else {
+                        // Không trong khung giờ nào, chờ đến khung giờ đặt cược tiếp theo
+                        console.log('[Đổ Thạch] Không trong khung giờ cược. Chờ...');
+                        if (currentHour < 6) {
+                            nextActionTime = 6;
+                        } else if (currentHour < 16) {
+                            nextActionTime = 16;
+                        } else {
+                            nextActionTime = 6; // Chờ đến 6h sáng mai
+                        }
+                    }
+                }
+                
+                timeToNextCheck = calculateTimeToNextHour(nextActionTime);
+                
+                // Hủy timeout cũ nếu có và thiết lập timeout mới
+                if (this.dothachTimeout) clearTimeout(this.dothachTimeout);
+                this.dothachTimeout = setTimeout(() => this.scheduleDoThach(), timeToNextCheck);
+                
+                console.log(`[Đổ Thạch] Lần kiểm tra tiếp theo lúc: ${new Date(Date.now() + timeToNextCheck).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`);
+            }
 
         stop() {
+            for (const taskName in this.timeoutIds) {
+                if (this.timeoutIds[taskName]) {
+                    clearTimeout(this.timeoutIds[taskName]);
+                    this.timeoutIds[taskName] = null; // Đặt lại giá trị để tránh rò rỉ bộ nhớ
+                    console.log(`[Auto] Đã hủy hẹn giờ cho nhiệm vụ: ${taskName}`);
+                }
+            }
             if (this.tienduyenTimeout) {
-            clearTimeout(this.tienduyenTimeout);
+                clearTimeout(this.tienduyenTimeout);
             console.log(`Đã dừng quá trình tự động cho tài khoản: ${this.accountId}`);
             }
         }
@@ -4175,11 +3696,28 @@
             if (localStorage.getItem('autorunEnabled') === null) {
                 localStorage.setItem('autorunEnabled', '0');
             }
+
             let autorunEnabled = localStorage.getItem('autorunEnabled') === '1';
+
             if (autorunEnabled) {
-                createUI.uiMenuCreator.setAutorunIsRunning();
-                createUI.updateButtonState('autorun');
-                this.start();
+                console.log('[Automation] Tự động khởi động Autorun...');
+                
+                // Tạo một hàm chờ để đảm bảo UI đã sẵn sàng
+                const checkStatusIcon = () => {
+                    const statusIcon = document.querySelector('.custom-script-status-icon');
+                    if (statusIcon) {
+                        // Nếu icon đã tồn tại, cập nhật trạng thái và bắt đầu tác vụ
+                        createUI.uiMenuCreator.setAutorunIsRunning();
+                        createUI.uiMenuCreator.updateButtonState('autorun');
+                        this.start();
+                    } else {
+                        // Nếu icon chưa tồn tại, chờ 100ms và thử lại
+                        setTimeout(checkStatusIcon, 100);
+                    }
+                };
+
+                // Bắt đầu quá trình kiểm tra
+                checkStatusIcon();
             }
         }
     }

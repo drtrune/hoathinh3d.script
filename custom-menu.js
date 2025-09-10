@@ -1790,7 +1790,7 @@
                 );
                 if (joinResult && joinResult.success === true) {
                     console.log(`✅ Tham gia luận võ thành công.`);
-                } else if (joinResult.message ===' Bạn đã tham gia Luận Võ Đường hôm nay rồi!') {
+                } else if (joinResult.message === 'Bạn đã tham gia Luận Võ Đường hôm nay rồi!') {
                     console.log(`✅ Tham gia luận võ thành công.`);
                 } else {
                     showNotification('Lỗi máy chủ hoặc lỗi mạng', 'error');

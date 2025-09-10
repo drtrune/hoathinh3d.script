@@ -1788,7 +1788,13 @@
                 const joinResult = await this.sendApiRequest(
                     'wp-json/luan-vo/v1/join-battle', 'POST', nonce, {}
                 );
-            console.log(`✅ Tham gia luận võ thành công.`);
+                if (joinResult && joinResult.success === true) {
+                    console.log(`✅ Tham gia luận võ thành công.`);
+                } else if (joinResult.message ===' Bạn đã tham gia Luận Võ Đường hôm nay rồi!') {
+                    console.log(`✅ Tham gia luận võ thành công.`);
+                } else {
+                    showNotification('Lỗi máy chủ hoặc lỗi mạng', 'error');
+                }
             }
 
 
@@ -1796,7 +1802,7 @@
             if (!taskTracker.getTaskStatus(accountId, 'luanvo').auto_accept){
                 const autoAcceptSuccess = await this.ensureAutoAccept(nonce);
                 if (!autoAcceptSuccess) {
-                    showNotification('⚠️ Tham gia thành công nhưng không thể bật tự động chấp nhận.', 'warning');
+                    showNotification('⚠️ Tham gia thành công nhưng không thể bật tự động chấp nhận.', 'warn');
                 } else {
                     console.log(`${this.logPrefix} ✅ Tự động chấp nhận đã được bật.`);
                 }

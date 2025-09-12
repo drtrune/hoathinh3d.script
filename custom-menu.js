@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     https://github.com/drtrune/hoathinh3d.script
-// @version       3.3
+// @version       3.3.1
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
 // @author        Dr. Trune
 // @match         https://hoathinh3d.mx/*
@@ -3653,10 +3653,6 @@
             this.isRunning = false;
         }
 
-        async delay(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-
         async start() {
             console.log(`[Auto] Bắt đầu quá trình tự động cho tài khoản: ${this.accountId}`);
             this.isRunning = true;
@@ -3666,20 +3662,20 @@
             this.scheduleTienDuyenCheck();
             // Đổ thạch
             this.scheduleDoThach();
-            this.delay(1000);
+            new Promise(resolve => setTimeout(resolve, 1000));
             // Các tác vụ khác
             this.scheduleTask('hoangvuc', () => hoangvuc.doHoangVuc(), this.INTERVAL_HOANG_VUC);
-            this.delay(1000);
+            new Promise(resolve => setTimeout(resolve, 1000));
             this.scheduleTask('thiluyen', () => doThiLuyenTongMon(), this.INTERVAL_THI_LUYEN);
-            this.delay(1000);
+            new Promise(resolve => setTimeout(resolve, 1000));
             this.scheduleTask('phucloi', () => doPhucLoiDuong(), this.INTERVAL_PHUC_LOI);
-            this.delay(1000);
+            new Promise(resolve => setTimeout(resolve, 1000));
             this.scheduleTask('khoangmach', () => khoangmach.doKhoangMach(), this.INTERVAL_KHOANG_MACH);
-            this.delay(1000);
+            new Promise(resolve => setTimeout(resolve, 1000));
             this.scheduleTask('bicanh', () => bicanh.doBiCanh(), this.INTERVAL_BI_CANH);
-            this.delay(1000);
+            new Promise(resolve => setTimeout(resolve, 1000));
             this.scheduleHoatDongNgay();
-            this.delay(1000);
+            new Promise(resolve => setTimeout(resolve, 1000));
             this.scheduleLuanVo();
             this.selfSchedule();
         }

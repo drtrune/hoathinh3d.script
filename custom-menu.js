@@ -3662,20 +3662,20 @@
             this.scheduleTienDuyenCheck();
             // Đổ thạch
             this.scheduleDoThach();
-            new Promise(resolve => setTimeout(resolve, 1000));
+            new Promise(resolve => setTimeout(resolve, 2000));
             // Các tác vụ khác
             this.scheduleTask('hoangvuc', () => hoangvuc.doHoangVuc(), this.INTERVAL_HOANG_VUC);
-            new Promise(resolve => setTimeout(resolve, 1000));
+            new Promise(resolve => setTimeout(resolve, 2000));
             this.scheduleTask('thiluyen', () => doThiLuyenTongMon(), this.INTERVAL_THI_LUYEN);
-            new Promise(resolve => setTimeout(resolve, 1000));
+            new Promise(resolve => setTimeout(resolve, 2000));
             this.scheduleTask('phucloi', () => doPhucLoiDuong(), this.INTERVAL_PHUC_LOI);
-            new Promise(resolve => setTimeout(resolve, 1000));
+            new Promise(resolve => setTimeout(resolve, 2000));
             this.scheduleTask('khoangmach', () => khoangmach.doKhoangMach(), this.INTERVAL_KHOANG_MACH);
-            new Promise(resolve => setTimeout(resolve, 1000));
+            new Promise(resolve => setTimeout(resolve, 2000));
             this.scheduleTask('bicanh', () => bicanh.doBiCanh(), this.INTERVAL_BI_CANH);
-            new Promise(resolve => setTimeout(resolve, 1000));
+            new Promise(resolve => setTimeout(resolve, 2000));
             this.scheduleHoatDongNgay();
-            new Promise(resolve => setTimeout(resolve, 1000));
+            new Promise(resolve => setTimeout(resolve, 2000));
             this.scheduleLuanVo();
             this.selfSchedule();
         }

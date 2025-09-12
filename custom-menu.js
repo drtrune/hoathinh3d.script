@@ -3653,6 +3653,10 @@
             this.isRunning = false;
         }
 
+        async delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
         async start() {
             console.log(`[Auto] Bắt đầu quá trình tự động cho tài khoản: ${this.accountId}`);
             this.isRunning = true;
@@ -3662,14 +3666,21 @@
             this.scheduleTienDuyenCheck();
             // Đổ thạch
             this.scheduleDoThach();
+            this.delay(1000);
             // Các tác vụ khác
-            this.scheduleTask('hoangvuc', () => hoangvuc.doHoangVuc(), this.INTERVAL_HOANG_VUC);
-            this.scheduleTask('thiluyen', () => doThiLuyenTongMon(), this.INTERVAL_THI_LUYEN);
-            this.scheduleTask('phucloi', () => doPhucLoiDuong(), this.INTERVAL_PHUC_LOI);
-            this.scheduleTask('khoangmach', () => khoangmach.doKhoangMach(), this.INTERVAL_KHOANG_MACH);
-            this.scheduleTask('bicanh', () => bicanh.doBiCanh(), this.INTERVAL_BI_CANH);
-            this.scheduleHoatDongNgay();
-            this.scheduleLuanVo();
+            await this.scheduleTask('hoangvuc', () => hoangvuc.doHoangVuc(), this.INTERVAL_HOANG_VUC);
+            this.delay(1000);
+            await this.scheduleTask('thiluyen', () => doThiLuyenTongMon(), this.INTERVAL_THI_LUYEN);
+            this.delay(1000);
+            await this.scheduleTask('phucloi', () => doPhucLoiDuong(), this.INTERVAL_PHUC_LOI);
+            this.delay(1000);
+            await this.scheduleTask('khoangmach', () => khoangmach.doKhoangMach(), this.INTERVAL_KHOANG_MACH);
+            this.delay(1000);
+            await this.scheduleTask('bicanh', () => bicanh.doBiCanh(), this.INTERVAL_BI_CANH);
+            this.delay(1000);
+            await this.scheduleHoatDongNgay();
+            this.delay(1000);
+            await this.scheduleLuanVo();
             this.selfSchedule();
         }
 
@@ -3805,7 +3816,7 @@
             }
             await luanvo.startLuanVo();
             let timeTo21h = new Date();
-            timeTo21h.setHours(0, 1, 0, 0);
+            timeTo21h.setHours(21, 1, 0, 0);
             const delay = timeTo21h.getTime() - Date.now();
             console.log(`[Auto] Lên lịch Luận Võ vào lúc 00:01. Thời gian chờ: ${delay}ms.`);
             if (this.luanvoTimeout) clearTimeout(this.luanvoTimeout);
